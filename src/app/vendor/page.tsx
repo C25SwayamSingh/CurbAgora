@@ -1,0 +1,171 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { ShieldCheck, Users } from "lucide-react";
+
+import { AppShell } from "@/components/app/app-shell";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { isMfaMandatoryRole, requireVendorDashboard } from "@/lib/auth/guards";
+import { createServerClient } from "@/lib/supabase/server";
+
+export const metadata: Metadata = { title: "Vendor dashboard — StreetEats" };
+
+export default async function VendorDashboardPage() {
+  // Owners/managers cannot reach this page without a fully MFA-verified
+  // (aal2) session — MFA is mandatory for leadership roles, not optional.
+  const ctx = await requireVendorDashboard("/vendor");
+
+  const supabase = await createServerClient();
+
+  // RLS scopes both queries: staff see only their own membership row and
+  // their org; owners/managers see the full roster.
+  const [{ data: organization }, { data: members }] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("*")
+      .eq("id", ctx.membership.organization_id)
+      .maybeSingle(),
+    supabase
+      .from("organization_members")
+      .select("*")
+      .eq("organization_id", ctx.membership.organization_id)
+      .order("created_at"),
+  ]);
+
+  const isLeadership = isMfaMandatoryRole(ctx.membership.role);
+
+  return (
+    <AppShell
+      nav={[
+        { href: "/account", label: "Account" },
+        { href: "/account/security", label: "Security" },
+      ]}
+    >
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {organization?.display_name ?? "Your organization"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            You are {ctx.membership.role === "owner" ? "an" : "a"}{" "}
+            <strong>{ctx.membership.role}</strong> of this organization.
+          </p>
+        </div>
+
+        {isLeadership ? (
+          <Alert variant="success">
+            <ShieldCheck aria-hidden="true" />
+            <AlertDescription>
+              Two-factor authentication is verified for this session — required
+              for {ctx.membership.role === "owner" ? "owners" : "managers"} to
+              manage this organization.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Organization</CardTitle>
+              <CardDescription>Your business details.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {organization ? (
+                <dl className="space-y-2 text-sm">
+                  <div>
+                    <dt className="text-muted-foreground">Display name</dt>
+                    <dd className="font-medium">{organization.display_name}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Legal name</dt>
+                    <dd className="font-medium">{organization.legal_name}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">URL name</dt>
+                    <dd className="font-medium">{organization.slug}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd className="font-medium capitalize">
+                      {organization.status}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Organization details are unavailable right now.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                <span className="flex items-center gap-2">
+                  <Users className="size-5" aria-hidden="true" />
+                  Team
+                </span>
+              </CardTitle>
+              <CardDescription>
+                {isLeadership
+                  ? "Everyone with access to this organization."
+                  : "Your membership. Owners and managers can see the full team."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {members && members.length > 0 ? (
+                <ul className="space-y-2 text-sm">
+                  {members.map((member) => (
+                    <li
+                      key={member.id}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                    >
+                      <span className="font-medium">
+                        {member.user_id === ctx.user.id ? "You" : "Team member"}
+                      </span>
+                      <span className="capitalize text-muted-foreground">
+                        {member.role}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No team members to show.
+                </p>
+              )}
+              {isLeadership ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Team invitations are coming in a later release.
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Next up for your business</CardTitle>
+            <CardDescription>
+              Menus, live locations, and customer reviews are planned for
+              upcoming phases — they are not available yet.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/account">Manage your account</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </AppShell>
+  );
+}
