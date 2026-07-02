@@ -1,6 +1,6 @@
 # food-vendor-platform
 
-Production-ready platform for mobile food vendors — food carts, food trucks, stands, and pop-up vendors — and the customers who discover them.
+Production-ready platform for mobile food vendors - food carts, food trucks, stands, and pop-up vendors - and the customers who discover them.
 
 ## Status — Phase 2: Authentication & Tenancy
 
