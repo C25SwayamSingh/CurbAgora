@@ -10,44 +10,55 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { pageTitle } from "@/lib/app-config";
+import { hasVendorMembership, resolveDashboardPath } from "@/lib/auth/mode";
 import {
   requireMfaSatisfied,
   resolveVendorOnboardingPath,
 } from "@/lib/auth/guards";
-import { AccountTypeForm } from "@/features/authentication/components/account-type-form";
+import { OnboardingPathForm } from "@/features/authentication/components/onboarding-path-form";
 
-export const metadata: Metadata = { title: "Get started — StreetEats" };
+export const metadata: Metadata = { title: pageTitle("Get started") };
 
 export default async function OnboardingPage() {
   const ctx = await requireMfaSatisfied("/onboarding");
 
-  if (ctx.profile?.onboarding_status === "complete") {
-    redirect(ctx.profile.account_type === "vendor" ? "/vendor" : "/customer");
+  if (
+    ctx.profile?.onboarding_status === "complete" &&
+    hasVendorMembership(ctx)
+  ) {
+    redirect(resolveDashboardPath(ctx));
   }
 
-  // Resume where the user left off. Vendors resume at whichever mandatory
-  // step (MFA, then organization creation) is still incomplete.
-  if (ctx.profile?.account_type === "vendor") {
-    redirect(resolveVendorOnboardingPath(ctx));
+  if (
+    ctx.profile?.onboarding_status === "complete" &&
+    !hasVendorMembership(ctx)
+  ) {
+    redirect("/customer");
   }
-  if (ctx.profile?.account_type === "customer") {
+
+  if (ctx.profile?.onboarding_status === "in_progress") {
+    if (ctx.profile.preferred_mode === "vendor") {
+      redirect(resolveVendorOnboardingPath(ctx));
+    }
     redirect("/onboarding/customer");
   }
 
   return (
     <AppShell>
       <div className="mx-auto max-w-xl">
-        <OnboardingSteps steps={["Account type", "Your details"]} current={0} />
+        <OnboardingSteps steps={["Get started", "Your details"]} current={0} />
         <Card>
           <CardHeader>
-            <CardTitle>How will you use StreetEats?</CardTitle>
+            <CardTitle>What would you like to do first?</CardTitle>
             <CardDescription>
-              This sets up the right experience for you.
+              Pick a starting path — you can switch interfaces anytime after
+              setup.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AccountTypeForm
-              initialAccountType={ctx.profile?.account_type ?? null}
+            <OnboardingPathForm
+              initialPreferredMode={ctx.profile?.preferred_mode ?? null}
             />
           </CardContent>
         </Card>

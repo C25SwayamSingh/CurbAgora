@@ -10,7 +10,7 @@ import {
 import { requireAuth } from "@/lib/auth/guards";
 import { ResetPasswordForm } from "@/features/authentication/components/reset-password-form";
 
-export const metadata: Metadata = { title: "Set new password — StreetEats" };
+export const metadata: Metadata = { title: "Set new password — CurbAgora" };
 
 export default async function ResetPasswordPage() {
   // A recovery session (from the email link) is required to set a password.

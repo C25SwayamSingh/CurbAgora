@@ -11,6 +11,8 @@
  */
 
 export type AccountType = "customer" | "vendor";
+/** Non-authoritative UI preference; does not grant vendor access. */
+export type PreferredMode = "customer" | "vendor";
 export type OnboardingStatus = "not_started" | "in_progress" | "complete";
 export type OrganizationStatus = "active" | "suspended" | "archived";
 export type OrganizationRole = "owner" | "manager" | "staff";
@@ -32,7 +34,9 @@ export type Database = {
           id: string;
           display_name: string;
           avatar_url: string | null;
+          /** @deprecated Authorization uses organization_members, not this field. */
           account_type: AccountType | null;
+          preferred_mode: PreferredMode;
           onboarding_status: OnboardingStatus;
           created_at: string;
           updated_at: string;
@@ -42,6 +46,7 @@ export type Database = {
           display_name?: string;
           avatar_url?: string | null;
           account_type?: AccountType | null;
+          preferred_mode?: PreferredMode;
           onboarding_status?: OnboardingStatus;
           created_at?: string;
           updated_at?: string;
@@ -51,6 +56,7 @@ export type Database = {
           display_name?: string;
           avatar_url?: string | null;
           account_type?: AccountType | null;
+          preferred_mode?: PreferredMode;
           onboarding_status?: OnboardingStatus;
           created_at?: string;
           updated_at?: string;
@@ -174,6 +180,7 @@ export type Database = {
     };
     Enums: {
       account_type: AccountType;
+      preferred_mode: PreferredMode;
       onboarding_status: OnboardingStatus;
       organization_status: OrganizationStatus;
       organization_role: OrganizationRole;

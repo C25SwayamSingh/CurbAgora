@@ -13,10 +13,8 @@ import { SubmitButton } from "@/features/authentication/components/submit-button
 
 export function ProfileForm({
   initialDisplayName,
-  initialAvatarUrl,
 }: {
   initialDisplayName: string;
-  initialAvatarUrl: string | null;
 }) {
   const [state, formAction] = useActionState(updateProfileAction, idleState);
 
@@ -49,23 +47,6 @@ export function ProfileForm({
         <FieldError
           id="displayName-error"
           errors={state.fieldErrors?.displayName}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="avatarUrl">Avatar URL (optional)</Label>
-        <Input
-          id="avatarUrl"
-          name="avatarUrl"
-          type="url"
-          placeholder="https://…"
-          defaultValue={initialAvatarUrl ?? ""}
-          aria-describedby="avatarUrl-error"
-          aria-invalid={Boolean(state.fieldErrors?.avatarUrl)}
-        />
-        <FieldError
-          id="avatarUrl-error"
-          errors={state.fieldErrors?.avatarUrl}
         />
       </div>
 

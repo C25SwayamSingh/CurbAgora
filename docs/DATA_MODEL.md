@@ -15,14 +15,15 @@ access in `src/lib/supabase/database.types.ts`.
 One row per auth user, created automatically by the `handle_new_user`
 trigger on `auth.users`. Never stores passwords or auth secrets.
 
-| Column                  | Type                                              | Notes                                      |
-| ----------------------- | ------------------------------------------------- | ------------------------------------------ |
-| id                      | uuid PK → auth.users                              | Immutable (trigger-protected)              |
-| display_name            | text                                              | ≤120 chars                                 |
-| avatar_url              | text nullable                                     | ≤2048 chars, https enforced app-side       |
-| account_type            | enum `customer` \| `vendor`, nullable             | One-time choice; change blocked by trigger |
-| onboarding_status       | enum `not_started` \| `in_progress` \| `complete` |                                            |
-| created_at / updated_at | timestamptz                                       | `updated_at` maintained by trigger         |
+| Column                  | Type                                              | Notes                                                          |
+| ----------------------- | ------------------------------------------------- | -------------------------------------------------------------- |
+| id                      | uuid PK → auth.users                              | Immutable (trigger-protected)                                  |
+| display_name            | text                                              | ≤120 chars                                                     |
+| avatar_url              | text nullable                                     | Legacy field; UI uses initials until Storage uploads           |
+| account_type            | enum `customer` \| `vendor`, nullable             | **Deprecated** — retained for migration; clients cannot change |
+| preferred_mode          | enum `customer` \| `vendor`                       | Non-authoritative UI preference; user-editable                 |
+| onboarding_status       | enum `not_started` \| `in_progress` \| `complete` |                                                                |
+| created_at / updated_at | timestamptz                                       | `updated_at` maintained by trigger                             |
 
 ### organizations
 
@@ -70,15 +71,15 @@ service-role key. Users can read only their own row.
 
 ## Database Functions
 
-| Function                         | Purpose                                                                     |
-| -------------------------------- | --------------------------------------------------------------------------- |
-| `create_organization_with_owner` | Atomic org + active owner membership; vendor accounts only, requires aal2   |
-| `is_platform_admin`              | RLS helper (avoids recursion; reads platform_admins); requires aal2         |
-| `is_org_member` / `has_org_role` | RLS helpers for membership/role checks                                      |
-| `shares_active_org`              | Lets co-members read each other's display names                             |
-| `mfa_assurance_ok`               | Requires aal2 unconditionally — restrictive policy on org/membership writes |
-| `handle_new_user`                | Creates a profile row per new auth user                                     |
-| `protect_*` triggers             | Field immutability, self-role-change block, final-owner protection          |
+| Function                         | Purpose                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `create_organization_with_owner` | Atomic org + active owner membership; requires aal2 (any authenticated user) |
+| `is_platform_admin`              | RLS helper (avoids recursion; reads platform_admins); requires aal2          |
+| `is_org_member` / `has_org_role` | RLS helpers for membership/role checks                                       |
+| `shares_active_org`              | Lets co-members read each other's display names                              |
+| `mfa_assurance_ok`               | Requires aal2 unconditionally — restrictive policy on org/membership writes  |
+| `handle_new_user`                | Creates a profile row per new auth user                                      |
+| `protect_*` triggers             | Field immutability, self-role-change block, final-owner protection           |
 
 All SECURITY DEFINER functions pin `search_path = public, pg_temp`, key
 decisions off `auth.uid()`, and carry in-code comments explaining why

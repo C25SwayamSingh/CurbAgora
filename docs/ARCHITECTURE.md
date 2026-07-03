@@ -2,7 +2,7 @@
 
 ## Overview
 
-StreetEats (food-vendor-platform) is a production-ready platform for mobile food vendors — food carts, food trucks, stands, and pop-up vendors — and the customers who discover them.
+CurbAgora (food-vendor-platform) is a production-ready platform for mobile food vendors — food carts, food trucks, stands, and pop-up vendors — and the customers who discover them. Application branding is centralized in `src/lib/app-config.ts`.
 
 Phase 1 established the application foundation. Phase 2 adds authentication, user profiles, organizations (tenants), memberships/roles, MFA foundations, and database-level tenant isolation.
 

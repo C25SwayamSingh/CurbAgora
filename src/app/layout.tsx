@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { APP_CONFIG, pageTitle } from "@/lib/app-config";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,9 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StreetEats — Find Mobile Food Vendors Near You",
-  description:
-    "Discover food carts, trucks, stands, and pop-up vendors. List your mobile food business and reach more customers.",
+  title: pageTitle(APP_CONFIG.tagline),
+  description: APP_CONFIG.shortDescription,
 };
 
 export default function RootLayout({

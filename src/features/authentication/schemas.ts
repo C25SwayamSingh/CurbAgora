@@ -52,18 +52,31 @@ export const profileSchema = z.object({
     .trim()
     .min(1, "Display name is required")
     .max(120, "Display name is too long"),
-  avatarUrl: z
-    .string()
-    .trim()
-    .max(2048, "Avatar URL is too long")
-    .url("Enter a valid URL")
-    .startsWith("https://", "Avatar URL must use https")
-    .or(z.literal(""))
-    .optional(),
 });
 
-export const accountTypeSchema = z.object({
-  accountType: z.enum(["customer", "vendor"]),
+/** Onboarding path selection — sets preferred UI mode only, not authorization. */
+export const onboardingPathSchema = z.object({
+  preferredMode: z.enum(["customer", "vendor"]),
+});
+
+export const preferredModeSchema = z.object({
+  preferredMode: z.enum(["customer", "vendor"]),
+});
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    password: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+/** @deprecated Use onboardingPathSchema / preferredModeSchema */
+export const accountTypeSchema = onboardingPathSchema.extend({
+  accountType: z.enum(["customer", "vendor"]).optional(),
 });
 
 export const mfaCodeSchema = z.object({

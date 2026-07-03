@@ -10,25 +10,29 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { pageTitle } from "@/lib/app-config";
 import { requireMfaSatisfied } from "@/lib/auth/guards";
 import { CustomerOnboardingForm } from "@/features/authentication/components/customer-onboarding-form";
 
-export const metadata: Metadata = { title: "Your profile — StreetEats" };
+export const metadata: Metadata = { title: pageTitle("Your profile") };
 
 export default async function CustomerOnboardingPage() {
   const ctx = await requireMfaSatisfied("/onboarding/customer");
 
   if (ctx.profile?.onboarding_status === "complete") {
-    redirect(ctx.profile.account_type === "vendor" ? "/vendor" : "/customer");
+    redirect("/customer");
   }
-  if (ctx.profile?.account_type !== "customer") {
+  if (
+    ctx.profile?.preferred_mode !== "customer" &&
+    ctx.profile?.onboarding_status !== "in_progress"
+  ) {
     redirect("/onboarding");
   }
 
   return (
     <AppShell>
       <div className="mx-auto max-w-xl">
-        <OnboardingSteps steps={["Account type", "Your details"]} current={1} />
+        <OnboardingSteps steps={["Get started", "Your details"]} current={1} />
         <Card>
           <CardHeader>
             <CardTitle>Tell us about yourself</CardTitle>

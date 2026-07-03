@@ -14,6 +14,10 @@ export type MockUserConfig = {
   currentLevel?: "aal1" | "aal2";
   /** Highest level the user could reach (aal2 = has a verified factor). */
   nextLevel?: "aal1" | "aal2";
+  /** When set, profile updates fail with this error (simulates RLS/grant failure). */
+  profileUpdateError?: { code?: string; message: string } | null;
+  /** When true, profile update succeeds but returns no row (missing profile). */
+  profileUpdateMissing?: boolean;
 };
 
 function thenable(data: unknown) {
@@ -41,6 +45,8 @@ export function createMockSupabase(config: MockUserConfig) {
     isPlatformAdmin = false,
     currentLevel = "aal1",
     nextLevel = "aal1",
+    profileUpdateError = null,
+    profileUpdateMissing = false,
   } = config;
 
   type MockError = { code?: string; message: string; status?: number } | null;
@@ -49,7 +55,33 @@ export function createMockSupabase(config: MockUserConfig) {
     data: null,
     error: null,
   }));
-  const update = vi.fn(() => thenable(null));
+
+  const updatePayloads: unknown[] = [];
+  const update = vi.fn((payload: unknown) => {
+    updatePayloads.push(payload);
+    const updateResult = profileUpdateMissing
+      ? { data: null, error: null }
+      : profileUpdateError
+        ? { data: null, error: profileUpdateError }
+        : {
+            data: {
+              id: user?.id,
+              preferred_mode:
+                (payload as { preferred_mode?: string }).preferred_mode ??
+                profile?.preferred_mode,
+            },
+            error: null,
+          };
+
+    const builder = {
+      eq: () => builder,
+      select: () => builder,
+      maybeSingle: async () => updateResult,
+      then: (resolve: (value: { data: unknown; error: MockError }) => void) =>
+        resolve(updateResult),
+    };
+    return builder;
+  });
 
   const client = {
     auth: {

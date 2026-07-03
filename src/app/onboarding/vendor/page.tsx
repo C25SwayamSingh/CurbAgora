@@ -14,11 +14,11 @@ import { requireVendorForOrgCreation } from "@/lib/auth/guards";
 import { CreateOrganizationForm } from "@/features/organizations/components/create-organization-form";
 
 export const metadata: Metadata = {
-  title: "Create your organization — StreetEats",
+  title: "Create your organization — CurbAgora",
 };
 
 const VENDOR_ONBOARDING_STEPS = [
-  "Account type",
+  "Get started",
   "Your details",
   "Two-factor setup",
   "Your organization",

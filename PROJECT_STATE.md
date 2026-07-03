@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** Phase 2 — authentication & tenancy (security-hardening pass)  
+**Last updated:** Phase 2 — pgTAP membership trigger fix + live auth verification  
 **Branch:** main  
 **Product spec:** `docs/PRODUCT_SPEC.md` not yet added
 
@@ -8,7 +8,8 @@
 
 Phase 2 is complete, verified, and hardened. The app has full authentication
 (Supabase Auth via @supabase/ssr cookie sessions), user profiles,
-customer/vendor onboarding, vendor organizations with role-based
+customer/vendor dual-mode onboarding on one account, interface mode switching,
+vendor organizations with role-based
 memberships, a platform-admin foundation, TOTP MFA, database-level tenant
 isolation (RLS default-deny on every table), and **mandatory MFA (aal2) for
 organization owners/managers and platform administrators** — enforced
@@ -20,9 +21,15 @@ database.
 - Sign-up with email verification, sign-in/out, password reset (all
   testable locally against Mailpit at http://localhost:54324 once the local
   Supabase stack is running)
-- Onboarding: one-time customer/vendor choice; customer profile completion;
-  **vendor sequence is profile → mandatory MFA enroll/verify → atomic
-  organization creation → dashboard**
+- Onboarding: **“What would you like to do first?”** (Discover vendors vs Set up
+  vendor business); sets `preferred_mode` (UI only, not permanent); customer
+  profile completion; vendor sequence profile → mandatory MFA → atomic org
+  creation → dashboard; **Become a vendor** later on the same account
+- Header **mode switch** (Customer / Vendor / Become a vendor); vendor routes
+  still require active `organization_members`
+- Simplified **Account** (initials avatar, read-only email, preferred mode, org
+  summary) and **Security** (password change, MFA, sessions, sign out)
+- Branding centralized as **CurbAgora** in `src/lib/app-config.ts`
 - Protected areas with server-side guards + RLS: `/onboarding`, `/account`,
   `/account/security`, `/customer`, `/vendor`, `/admin`, `/mfa-enroll`,
   `/mfa-challenge`
@@ -35,8 +42,9 @@ database.
 - Role model: customer, vendor staff/manager/owner, platform admin
   (dedicated table, writable only via migrations/service role)
 - Versioned Supabase migrations (`profiles`/`organizations`/
-  `organization_members`/`platform_admins` foundation, plus an MFA
-  enforcement-hardening migration) + a 46-assertion pgTAP suite
+  `organization_members`/`platform_admins` foundation, MFA enforcement
+  hardening, authenticated table-privilege grants, preferred-mode account
+  model, membership DEFINER trigger fix) + a **51/51** pgTAP suite
 - Fail-fast env validation outside development; `src/proxy.ts` (Next.js 16's
   `middleware.ts` replacement) session refresh
 - CI pipeline (lint, typecheck, unit tests, E2E)
@@ -51,22 +59,65 @@ database.
 - Per-device session listing (Supabase limitation; revoke-others supported)
 - CI execution of `db:test`/`db:lint` (no Docker-capable runner configured)
 
-## Verification Status (this hardening pass)
+## Verification Status (Phase 2 close-out)
 
-- **Database tests**: the pgTAP suite (46 assertions, up from 34) is
-  written and ready but **could not be executed** in the authoring
-  environment — no Docker-compatible container runtime is available (no
-  `docker`, `colima`, `podman`, or Homebrew to install one). Exact commands
-  still required: `npm run db:start && npm run db:reset && npm run db:test
-&& npm run db:lint`. See `supabase/tests/README.md`.
-- **Manual auth-flow verification**: could not be performed for the same
-  reason (`npm run dev` against a live Supabase stack, plus Mailpit for
-  verification/reset emails, both require the local stack). All 12
-  requested flows are implemented in code and covered by the automated
-  unit/E2E suite where a live backend isn't required; live-backend
-  verification remains an open TODO for an environment with Docker.
-- **Everything else** (`npm run format`, `lint`, `typecheck`, `test`,
-  `test:e2e`, `build`) passes green in this environment.
+### pgTAP root cause (tests 26, 27, 30)
+
+**Production authorization defect — not a test harness issue.**
+
+`protect_membership_update()` and `protect_membership_delete()` are SECURITY
+DEFINER. They gated client protections with `current_user in ('anon',
+'authenticated')`, but inside DEFINER functions `current_user` is `postgres`,
+so self role changes and final-owner deletion were not blocked for API clients.
+
+**Fix:** `20260704000000_fix_membership_definer_triggers.sql` gates on
+`current_setting('role', true)` instead. See `supabase/tests/README.md` and
+`docs/SECURITY_MODEL.md`.
+
+### Automated checks (2026-07-02)
+
+| Check                                  | Result          |
+| -------------------------------------- | --------------- |
+| `npm run format`                       | pass            |
+| `npm run lint`                         | pass            |
+| `npm run typecheck`                    | pass            |
+| `npm run test`                         | **103/103**     |
+| `npm run test:e2e`                     | **26/26**       |
+| `npm run build`                        | pass            |
+| `npm run db:reset` + `npm run db:test` | **51/51** pgTAP |
+| `npm run db:lint`                      | pass            |
+
+### Live auth flows (local Supabase + Mailpit)
+
+Manual verification with `liveflow.tester@example.com` and
+`nomember.tester@example.com` against `npm run dev` + `npm run db:start`:
+
+| #   | Flow                                      | Result                                             |
+| --- | ----------------------------------------- | -------------------------------------------------- |
+| 1   | Sign up + verify email                    | pass (verify page; Mailpit link uses PKCE)         |
+| 2   | Choose Discover vendors                   | pass                                               |
+| 3   | Reach customer mode                       | pass (`/customer`)                                 |
+| 4   | Become a vendor (mode switch)             | pass (redirects to vendor onboarding)              |
+| 5   | Return safely before vendor setup         | pass                                               |
+| 6   | Complete vendor profile                   | pass                                               |
+| 7   | Enroll and verify MFA                     | pass (after stale-factor cleanup + QR `<img>` fix) |
+| 8   | Create organization                       | pass (`Live Flow Taco Cart`)                       |
+| 9   | Reach vendor mode                         | pass (`/vendor`)                                   |
+| 10  | Switch vendor → customer                  | pass                                               |
+| 11  | Switch customer → vendor                  | pass                                               |
+| 12  | Non-member cannot access vendor dashboard | pass (`/vendor` → vendor onboarding/MFA gate)      |
+| 13  | Normal user cannot access `/admin`        | pass (redirect to `/`)                             |
+| 14  | Sign out / sign in with MFA challenge     | pass (`/mfa-challenge` → `/vendor`)                |
+| 15  | Password reset via Mailpit                | pass (after redirect fix to `/auth/callback`)      |
+
+**App fixes discovered during live testing:**
+
+- Vendor MFA page: removed deprecated `account_type` gate
+- MFA enrollment: native `<img>` for Supabase QR data URLs
+- MFA re-enroll: clear **unverified** factors via `listFactors().all` (Supabase
+  only lists verified factors in `.totp`)
+- Password reset email: `redirectTo` must use `/auth/callback` for PKCE recovery
+  links (not `/auth/confirm`)
 
 ## Requirements to Run With Real Data
 
@@ -90,7 +141,7 @@ npm run format       # Prettier
 npm run db:start     # Local Postgres + Auth (Docker-compatible runtime required)
 npm run db:stop      # Stop the local stack
 npm run db:reset     # Re-apply migrations locally
-npm run db:test      # pgTAP RLS + MFA/AAL policy tests (46 assertions)
+npm run db:test      # pgTAP RLS + MFA/AAL policy tests (51 assertions)
 npm run db:lint      # Static analysis of the schema
 npm run db:types     # Regenerate src/lib/supabase/database.types.ts
 ```
@@ -104,6 +155,7 @@ npm run db:types     # Regenerate src/lib/supabase/database.types.ts
 
 ## Assumptions
 
-- Product name: **StreetEats** (placeholder until product spec defines branding)
+- Product name: **CurbAgora** (`src/lib/app-config.ts`)
+- One account supports customer and vendor interfaces; vendor authorization is membership-based
 - Email delivery uses Supabase's built-in auth emails (local: Mailpit via CLI)
 - Platform admins are granted manually via migration/service role by design

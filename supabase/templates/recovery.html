@@ -1,0 +1,10 @@
+<h2>Reset your password</h2>
+
+<p>We received a request to reset your password for {{ .Email }}.</p>
+<p>
+  <a
+    href="{{ .SiteURL }}/auth/recovery?token_hash={{ .TokenHash }}&amp;type=recovery"
+    >Reset password</a
+  >
+</p>
+<p>If you didn't request this, you can safely ignore this email.</p>

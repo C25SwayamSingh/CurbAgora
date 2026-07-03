@@ -11,7 +11,7 @@ import {
 import { getAuthContext } from "@/lib/auth/guards";
 import { SignUpForm } from "@/features/authentication/components/sign-up-form";
 
-export const metadata: Metadata = { title: "Create account — StreetEats" };
+export const metadata: Metadata = { title: "Create account — CurbAgora" };
 
 export default async function SignUpPage() {
   const ctx = await getAuthContext();

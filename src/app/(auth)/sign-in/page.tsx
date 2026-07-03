@@ -10,9 +10,10 @@ import {
 } from "@/components/ui/card";
 import { getAuthContext } from "@/lib/auth/guards";
 import { safeNextPath } from "@/lib/auth/redirect";
+import { APP_CONFIG, pageTitle } from "@/lib/app-config";
 import { SignInForm } from "@/features/authentication/components/sign-in-form";
 
-export const metadata: Metadata = { title: "Sign in — StreetEats" };
+export const metadata: Metadata = { title: pageTitle("Sign in") };
 
 export default async function SignInPage({
   searchParams,
@@ -31,7 +32,9 @@ export default async function SignInPage({
     <Card>
       <CardHeader>
         <CardTitle>Welcome back</CardTitle>
-        <CardDescription>Sign in to your StreetEats account.</CardDescription>
+        <CardDescription>
+          Sign in to your {APP_CONFIG.name} account.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <SignInForm

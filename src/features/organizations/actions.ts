@@ -32,12 +32,6 @@ export async function createOrganizationAction(
 ): Promise<ActionState> {
   const ctx = await requireAuth();
 
-  if (ctx.profile?.account_type !== "vendor") {
-    return errorState(
-      "A vendor account is required to create an organization.",
-    );
-  }
-
   // Idempotency: if this user already owns an org (e.g. duplicate submit or
   // browser retry), don't create a second one — continue onboarding.
   if (ctx.memberships.some((m) => m.role === "owner")) {
@@ -79,7 +73,10 @@ export async function createOrganizationAction(
 
   const { error: profileError } = await supabase
     .from("profiles")
-    .update({ onboarding_status: "complete" })
+    .update({
+      onboarding_status: "complete",
+      preferred_mode: "vendor",
+    })
     .eq("id", ctx.user.id);
 
   if (profileError) {

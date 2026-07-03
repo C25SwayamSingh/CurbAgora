@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MapPin, Store, Truck } from "lucide-react";
 
+import { APP_CONFIG } from "@/lib/app-config";
 import { Button } from "@/components/ui/button";
 
 export function LandingPage() {
@@ -11,7 +12,7 @@ export function LandingPage() {
           <div className="flex items-center gap-2">
             <Truck className="size-6 text-primary" aria-hidden="true" />
             <span className="text-lg font-semibold tracking-tight">
-              StreetEats
+              {APP_CONFIG.name}
             </span>
           </div>
           <div className="flex items-center gap-4 sm:gap-6">
@@ -145,7 +146,7 @@ export function LandingPage() {
 
       <footer className="border-t border-border/60 py-6">
         <p className="text-center text-sm text-muted-foreground">
-          StreetEats — Phase 1 foundation
+          CurbAgora — Phase 1 foundation
         </p>
       </footer>
     </div>

@@ -11,7 +11,7 @@ import {
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Admin — StreetEats" };
+export const metadata: Metadata = { title: "Admin — CurbAgora" };
 
 /**
  * Platform administration placeholder. Access requires a row in

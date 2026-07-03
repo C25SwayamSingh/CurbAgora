@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Truck } from "lucide-react";
+
+import { APP_CONFIG } from "@/lib/app-config";
 
 export default function AuthLayout({
   children,
@@ -8,11 +9,8 @@ export default function AuthLayout({
     <div className="flex min-h-full flex-col">
       <header className="border-b border-border/60">
         <div className="mx-auto flex w-full max-w-5xl items-center px-4 py-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Truck className="size-6 text-primary" aria-hidden="true" />
-            <span className="text-lg font-semibold tracking-tight">
-              StreetEats
-            </span>
+          <Link href="/" className="text-lg font-semibold tracking-tight">
+            {APP_CONFIG.name}
           </Link>
         </div>
       </header>

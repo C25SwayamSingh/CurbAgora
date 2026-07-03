@@ -90,25 +90,11 @@ describe("resetPasswordSchema", () => {
 });
 
 describe("profileSchema", () => {
-  it("allows empty avatar URL", () => {
-    expect(
-      profileSchema.safeParse({ displayName: "Maria", avatarUrl: "" }).success,
-    ).toBe(true);
-  });
-
-  it("rejects non-https avatar URLs", () => {
-    expect(
-      profileSchema.safeParse({
-        displayName: "Maria",
-        avatarUrl: "http://insecure.example.com/pic.png",
-      }).success,
-    ).toBe(false);
-    expect(
-      profileSchema.safeParse({
-        displayName: "Maria",
-        avatarUrl: "javascript:alert(1)",
-      }).success,
-    ).toBe(false);
+  it("requires a display name", () => {
+    expect(profileSchema.safeParse({ displayName: "" }).success).toBe(false);
+    expect(profileSchema.safeParse({ displayName: "Maria" }).success).toBe(
+      true,
+    );
   });
 });
 

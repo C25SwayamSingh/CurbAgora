@@ -4,8 +4,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { getAppUrl } from "@/lib/app-url";
-import { requireAuth } from "@/lib/auth/guards";
 import { safeNextPath } from "@/lib/auth/redirect";
+import {
+  classifyProfileWriteError,
+  logActionFailure,
+  newCorrelationId,
+} from "@/lib/errors/action-errors";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   errorState,
@@ -13,14 +17,17 @@ import {
   type ActionState,
 } from "@/features/authentication/action-state";
 import {
-  accountTypeSchema,
-  forgotPasswordSchema,
+  onboardingPathSchema,
+  changePasswordSchema,
   mfaCodeSchema,
+  preferredModeSchema,
   profileSchema,
   resetPasswordSchema,
   signInSchema,
   signUpSchema,
 } from "@/features/authentication/schemas";
+import { hasVendorMembership } from "@/lib/auth/mode";
+import { requireAuth, resolveVendorOnboardingPath } from "@/lib/auth/guards";
 
 const GENERIC_AUTH_ERROR =
   "Something went wrong. Please try again in a moment.";
@@ -140,40 +147,8 @@ export async function signOutOtherSessionsAction(): Promise<ActionState> {
 }
 
 /**
- * Request a password reset email. Always reports success so the form cannot
- * be used to probe which emails are registered.
+ * Set a new password. Requires the recovery session from the email link.
  */
-export async function forgotPasswordAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const parsed = forgotPasswordSchema.safeParse({
-    email: formData.get("email"),
-  });
-
-  if (!parsed.success) {
-    return errorState(
-      "Please fix the highlighted fields.",
-      z.flattenError(parsed.error).fieldErrors,
-    );
-  }
-
-  const supabase = await createServerClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(
-    parsed.data.email,
-    { redirectTo: `${getAppUrl()}/auth/confirm?next=/reset-password` },
-  );
-
-  if (error) {
-    console.error("password-reset request failed", { code: error.code });
-  }
-
-  return successState(
-    "If an account exists for that email, a reset link is on its way.",
-  );
-}
-
-/** Set a new password. Requires the recovery session from the email link. */
 export async function resetPasswordAction(
   _prev: ActionState,
   formData: FormData,
@@ -212,6 +187,9 @@ export async function resetPasswordAction(
     return errorState(GENERIC_AUTH_ERROR);
   }
 
+  // End the recovery session — user must sign in with the new password.
+  await supabase.auth.signOut();
+
   redirect("/sign-in?reset=success");
 }
 
@@ -224,7 +202,6 @@ export async function updateProfileAction(
 
   const parsed = profileSchema.safeParse({
     displayName: formData.get("displayName"),
-    avatarUrl: formData.get("avatarUrl") ?? "",
   });
 
   if (!parsed.success) {
@@ -241,7 +218,6 @@ export async function updateProfileAction(
     .from("profiles")
     .update({
       display_name: parsed.data.displayName,
-      avatar_url: parsed.data.avatarUrl || null,
     })
     .eq("id", ctx.user.id);
 
@@ -253,53 +229,155 @@ export async function updateProfileAction(
   return successState("Profile saved.");
 }
 
-/**
- * One-time onboarding choice between customer and vendor. The DB trigger
- * rejects any later change, so a customer can never flip themselves to
- * vendor after the fact.
- */
-export async function chooseAccountTypeAction(
+/** Change password while signed in (requires current password). */
+export async function changePasswordAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await requireAuth();
 
-  const parsed = accountTypeSchema.safeParse({
-    accountType: formData.get("accountType"),
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get("currentPassword"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
   });
 
   if (!parsed.success) {
-    return errorState("Choose customer or vendor to continue.");
+    return errorState(
+      "Please fix the highlighted fields.",
+      z.flattenError(parsed.error).fieldErrors,
+    );
   }
 
-  if (
-    ctx.profile?.account_type &&
-    ctx.profile.account_type !== parsed.data.accountType
-  ) {
-    return errorState(
-      "Your account type is already set and cannot be changed here.",
-    );
+  const supabase = await createServerClient();
+  const email = ctx.user.email;
+  if (!email) {
+    return errorState(GENERIC_AUTH_ERROR);
+  }
+
+  const { error: reauthError } = await supabase.auth.signInWithPassword({
+    email,
+    password: parsed.data.currentPassword,
+  });
+  if (reauthError) {
+    return errorState("Current password is incorrect.", {
+      currentPassword: ["Current password is incorrect."],
+    });
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  });
+
+  if (error) {
+    if (error.code === "same_password") {
+      return errorState("Choose a password you have not used before.", {
+        password: ["New password must be different from the current one."],
+      });
+    }
+    console.error("password change failed", { code: error.code });
+    return errorState(GENERIC_AUTH_ERROR);
+  }
+
+  return successState("Password updated.");
+}
+
+/**
+ * First onboarding step: preferred UI mode only (not authorization).
+ */
+export async function chooseOnboardingPathAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await requireAuth();
+
+  const parsed = onboardingPathSchema.safeParse({
+    preferredMode: formData.get("preferredMode"),
+  });
+
+  if (!parsed.success) {
+    return errorState("Choose how you would like to get started.");
+  }
+
+  const supabase = await createServerClient();
+  const correlationId = newCorrelationId();
+  const { data: updated, error } = await supabase
+    .from("profiles")
+    .update({
+      preferred_mode: parsed.data.preferredMode,
+      onboarding_status: "in_progress",
+    })
+    .eq("id", ctx.user.id)
+    .select("id, preferred_mode")
+    .maybeSingle();
+
+  if (error) {
+    const kind = classifyProfileWriteError(error);
+    const { userMessage } = logActionFailure({
+      correlationId,
+      kind,
+      operation: "chooseOnboardingPathAction",
+      userId: ctx.user.id,
+      code: error.code,
+      message: error.message,
+    });
+    return errorState(userMessage);
+  }
+
+  if (!updated) {
+    const { userMessage } = logActionFailure({
+      correlationId,
+      kind: "missing_profile",
+      operation: "chooseOnboardingPathAction",
+      userId: ctx.user.id,
+      message: "profile row missing or update returned no rows",
+    });
+    return errorState(userMessage);
+  }
+
+  redirect(
+    parsed.data.preferredMode === "vendor"
+      ? "/onboarding/vendor/profile"
+      : "/onboarding/customer",
+  );
+}
+
+/** @deprecated Use chooseOnboardingPathAction */
+export const chooseAccountTypeAction = chooseOnboardingPathAction;
+
+/** Switch interface mode — preferred_mode only; vendor access still requires membership. */
+export async function setPreferredModeAction(
+  formData: FormData,
+): Promise<void> {
+  const ctx = await requireAuth();
+
+  const parsed = preferredModeSchema.safeParse({
+    preferredMode: formData.get("preferredMode"),
+  });
+  if (!parsed.success) {
+    redirect("/account");
   }
 
   const supabase = await createServerClient();
   const { error } = await supabase
     .from("profiles")
-    .update({
-      account_type: parsed.data.accountType,
-      onboarding_status: "in_progress",
-    })
+    .update({ preferred_mode: parsed.data.preferredMode })
     .eq("id", ctx.user.id);
 
   if (error) {
-    console.error("account type selection failed", { code: error.code });
-    return errorState(GENERIC_AUTH_ERROR);
+    console.error("preferred mode update failed", { code: error.code });
+    redirect("/account");
   }
 
-  redirect(
-    parsed.data.accountType === "vendor"
-      ? "/onboarding/vendor/profile"
-      : "/onboarding/customer",
-  );
+  if (parsed.data.preferredMode === "customer") {
+    redirect("/customer");
+  }
+
+  if (!hasVendorMembership(ctx)) {
+    redirect(resolveVendorOnboardingPath(ctx));
+  }
+
+  redirect("/vendor");
 }
 
 /**
@@ -313,13 +391,8 @@ export async function completeVendorProfileAction(
 ): Promise<ActionState> {
   const ctx = await requireAuth();
 
-  if (ctx.profile?.account_type !== "vendor") {
-    return errorState("Vendor onboarding requires a vendor account.");
-  }
-
   const parsed = profileSchema.safeParse({
     displayName: formData.get("displayName"),
-    avatarUrl: formData.get("avatarUrl") ?? "",
   });
 
   if (!parsed.success) {
@@ -334,7 +407,7 @@ export async function completeVendorProfileAction(
     .from("profiles")
     .update({
       display_name: parsed.data.displayName,
-      avatar_url: parsed.data.avatarUrl || null,
+      preferred_mode: "vendor",
     })
     .eq("id", ctx.user.id);
 
@@ -353,13 +426,15 @@ export async function completeCustomerOnboardingAction(
 ): Promise<ActionState> {
   const ctx = await requireAuth();
 
-  if (ctx.profile?.account_type !== "customer") {
-    return errorState("Customer onboarding requires a customer account.");
+  if (
+    ctx.profile?.preferred_mode !== "customer" &&
+    ctx.profile?.onboarding_status !== "in_progress"
+  ) {
+    return errorState("Continue customer setup from onboarding.");
   }
 
   const parsed = profileSchema.safeParse({
     displayName: formData.get("displayName"),
-    avatarUrl: formData.get("avatarUrl") ?? "",
   });
 
   if (!parsed.success) {
@@ -374,7 +449,7 @@ export async function completeCustomerOnboardingAction(
     .from("profiles")
     .update({
       display_name: parsed.data.displayName,
-      avatar_url: parsed.data.avatarUrl || null,
+      preferred_mode: "customer",
       onboarding_status: "complete",
     })
     .eq("id", ctx.user.id);
@@ -403,6 +478,30 @@ export type MfaEnrollmentState = ActionState & {
 export async function enrollMfaAction(): Promise<MfaEnrollmentState> {
   await requireAuth();
   const supabase = await createServerClient();
+
+  const { data: factors, error: listError } =
+    await supabase.auth.mfa.listFactors();
+  if (listError) {
+    console.error("MFA list factors failed", { code: listError.code });
+    return errorState(GENERIC_AUTH_ERROR);
+  }
+
+  // Abandoned enrollments leave an unverified factor that blocks re-enroll.
+  // listFactors() only includes verified factors in `totp`; scan `all`.
+  for (const factor of factors?.all ?? []) {
+    if (factor.factor_type !== "totp" || factor.status !== "unverified") {
+      continue;
+    }
+    const { error: unenrollError } = await supabase.auth.mfa.unenroll({
+      factorId: factor.id,
+    });
+    if (unenrollError) {
+      console.error("MFA unenroll stale factor failed", {
+        code: unenrollError.code,
+      });
+      return errorState(GENERIC_AUTH_ERROR);
+    }
+  }
 
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",

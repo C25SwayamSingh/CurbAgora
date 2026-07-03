@@ -66,14 +66,16 @@ describe("createOrganizationAction", () => {
     ).rejects.toThrow("REDIRECT:/sign-in");
   });
 
-  it("rejects customer accounts", async () => {
+  it("allows customer accounts when MFA is verified", async () => {
     const client = useSupabase({
       user,
       profile: { ...vendorProfile, account_type: "customer" },
+      ...aal2,
     });
-    const state = await createOrganizationAction(idleState, form(validForm));
-    expect(state.status).toBe("error");
-    expect(client.rpc).not.toHaveBeenCalled();
+    await expect(
+      createOrganizationAction(idleState, form(validForm)),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.rpc).toHaveBeenCalled();
   });
 
   it("is idempotent: existing owners are redirected, not duplicated", async () => {

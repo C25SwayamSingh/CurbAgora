@@ -13,7 +13,7 @@ import { safeNextPath } from "@/lib/auth/redirect";
 import { MfaEnrollment } from "@/features/authentication/components/mfa-enrollment";
 
 export const metadata: Metadata = {
-  title: "Set up two-factor authentication — StreetEats",
+  title: "Set up two-factor authentication — CurbAgora",
 };
 
 /**

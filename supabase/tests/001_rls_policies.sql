@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(46);
+select plan(51);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: four users — vendor owner, vendor manager-to-be, customer,
@@ -36,8 +36,8 @@ select is(
 
 -- Set account types as the service role (bypasses trigger protection since
 -- current_user is postgres here).
-update public.profiles set account_type = 'vendor',   onboarding_status = 'complete' where id in ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000004');
-update public.profiles set account_type = 'customer', onboarding_status = 'complete' where id = '00000000-0000-0000-0000-000000000003';
+update public.profiles set account_type = 'vendor', preferred_mode = 'vendor', onboarding_status = 'complete' where id in ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000004');
+update public.profiles set account_type = 'customer', preferred_mode = 'customer', onboarding_status = 'complete' where id = '00000000-0000-0000-0000-000000000003';
 
 -- Helper to impersonate an authenticated user at a given assurance level
 -- ('aal1' by default — a plain password-only session). Tests that need a
@@ -45,6 +45,8 @@ update public.profiles set account_type = 'customer', onboarding_status = 'compl
 -- always visible at the call site.
 create or replace function test_as_user(uid uuid, aal text default 'aal1') returns void language plpgsql as $$
 begin
+  perform set_config('role', 'none', true);
+  perform set_config('request.jwt.claims', '', true);
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims',
     json_build_object('sub', uid, 'role', 'authenticated', 'aal', aal)::text, true);
@@ -81,6 +83,29 @@ create or replace function test_as_service() returns void language plpgsql as $$
 begin
   perform set_config('role', 'postgres', true);
   perform set_config('request.jwt.claims', '', true);
+end;
+$$;
+
+-- Count rows matched by an UPDATE ... statement under the current role/RLS.
+create or replace function test_rows_updated(update_sql text) returns int language plpgsql as $$
+declare row_count int;
+begin
+  execute format(
+    'with updated as (%s returning 1) select count(*)::int from updated',
+    update_sql
+  ) into row_count;
+  return row_count;
+end;
+$$;
+
+create or replace function test_rows_inserted(insert_sql text) returns int language plpgsql as $$
+declare row_count int;
+begin
+  execute format(
+    'with inserted as (%s returning 1) select count(*)::int from inserted',
+    insert_sql
+  ) into row_count;
+  return row_count;
 end;
 $$;
 
@@ -141,15 +166,13 @@ select is(
   'org creation atomically creates the active owner membership'
 );
 
--- Customer, even at aal2, is rejected by the role check — proves the two
--- gates (MFA and account_type) are independent of each other.
+-- Any authenticated user at aal2 may bootstrap an organization; vendor
+-- access is granted by the owner membership row, not profile fields.
 select test_as_user('00000000-0000-0000-0000-000000000003', 'aal2');
 
-select throws_ok(
+select lives_ok(
   $$ select public.create_organization_with_owner('Customer LLC', 'Customer Org', 'customer-org') $$,
-  '42501',
-  null,
-  'AAL2 customer account still cannot create an organization (role gate)'
+  'AAL2 customer account can create an organization when MFA-verified'
 );
 
 select test_as_user('00000000-0000-0000-0000-000000000001', 'aal2');
@@ -199,16 +222,14 @@ select throws_ok(
      where id = '00000000-0000-0000-0000-000000000003' $$,
   '42501',
   null,
-  'customer cannot flip account_type to vendor (role escalation blocked)'
+  'customer cannot change deprecated account_type to vendor (trigger blocked)'
 );
 
 -- Update against someone else's row: RLS filters it to zero rows.
 select is(
-  (with updated as (
-     update public.profiles set display_name = 'hax'
-     where id = '00000000-0000-0000-0000-000000000001'
-     returning 1)
-   select count(*)::int from updated),
+  test_rows_updated(
+    $$ update public.profiles set display_name = 'hax'
+       where id = '00000000-0000-0000-0000-000000000001' $$),
   0,
   'user cannot update another user''s profile (0 rows matched)'
 );
@@ -219,8 +240,8 @@ select is(
 
 select is(
   (select count(*)::int from public.organizations),
-  0,
-  'customer (non-member) sees no organizations'
+  1,
+  'customer who owns an organization sees it after bootstrap'
 );
 
 select test_as_user('00000000-0000-0000-0000-000000000001', 'aal2');
@@ -236,11 +257,9 @@ select is(
 select test_as_user('00000000-0000-0000-0000-000000000001', 'aal1');
 
 select is(
-  (with updated as (
-     update public.organizations set display_name = 'AAL1 Attempt'
-     where slug = 'taco-cart'
-     returning 1)
-   select count(*)::int from updated),
+  test_rows_updated(
+    $$ update public.organizations set display_name = 'AAL1 Attempt'
+       where slug = 'taco-cart' $$),
   0,
   'AAL1 owner cannot update organization settings (MFA mandatory, not optional)'
 );
@@ -253,11 +272,9 @@ select lives_ok(
 );
 
 select is(
-  (with updated as (
-     update public.organizations set display_name = 'hax'
-     where slug = 'burger-truck'
-     returning 1)
-   select count(*)::int from updated),
+  test_rows_updated(
+    $$ update public.organizations set display_name = 'hax'
+       where slug = 'burger-truck' $$),
   0,
   'owner cannot update a different organization (0 rows matched)'
 );
@@ -293,8 +310,9 @@ select throws_ok(
   'duplicate active membership for same (org, user) is rejected'
 );
 
--- Owner cannot change own role (self-change blocked even for owners, even
--- at aal2 — this is a business-rule trigger, not an MFA gate).
+-- Owner cannot change own role (trigger blocks with 42501).
+select test_as_user('00000000-0000-0000-0000-000000000001', 'aal2');
+
 select throws_ok(
   $$ update public.organization_members set role = 'staff'
      where user_id = '00000000-0000-0000-0000-000000000001'
@@ -320,12 +338,10 @@ select throws_ok(
 select test_as_user('00000000-0000-0000-0000-000000000001', 'aal1');
 
 select is(
-  (with updated as (
-     update public.organization_members set role = 'manager'
-     where user_id = '00000000-0000-0000-0000-000000000002'
-       and organization_id = (select id from public.organizations where slug = 'taco-cart')
-     returning 1)
-   select count(*)::int from updated),
+  test_rows_updated(
+    $$ update public.organization_members set role = 'manager'
+       where user_id = '00000000-0000-0000-0000-000000000002'
+         and organization_id = (select id from public.organizations where slug = 'taco-cart') $$),
   0,
   'owner cannot bypass MFA via a direct role-assignment DB request at aal1'
 );
@@ -397,11 +413,9 @@ select is(
 );
 
 select is(
-  (with updated as (
-     update public.organizations set display_name = 'Forged Claim Attempt'
-     where slug = 'taco-cart'
-     returning 1)
-   select count(*)::int from updated),
+  test_rows_updated(
+    $$ update public.organizations set display_name = 'Forged Claim Attempt'
+       where slug = 'taco-cart' $$),
   0,
   'forged claims cannot be used to perform a sensitive org write'
 );
@@ -420,11 +434,9 @@ select is(
 );
 
 select is(
-  (with updated as (
-     update public.organization_members set role = 'manager'
-     where user_id = '00000000-0000-0000-0000-000000000003'
-     returning 1)
-   select count(*)::int from updated),
+  test_rows_updated(
+    $$ update public.organization_members set role = 'manager'
+       where user_id = '00000000-0000-0000-0000-000000000003' $$),
   0,
   'staff cannot promote anyone (update matches 0 rows)'
 );
@@ -444,14 +456,12 @@ select is(
 );
 
 select is(
-  (with inserted as (
-     insert into public.organization_members (organization_id, user_id, role, status, invited_by)
-     select o.id, '00000000-0000-0000-0000-000000000004', 'owner', 'active',
-            '00000000-0000-0000-0000-000000000004'
-     from public.organizations o
-     where o.slug = 'taco-cart'
-     returning 1)
-   select count(*)::int from inserted),
+  test_rows_inserted(
+    $$ insert into public.organization_members (organization_id, user_id, role, status, invited_by)
+       select o.id, '00000000-0000-0000-0000-000000000004', 'owner', 'active',
+              '00000000-0000-0000-0000-000000000004'
+       from public.organizations o
+       where o.slug = 'taco-cart' $$),
   0,
   'outsider cannot insert themselves into another org (0 rows: org invisible)'
 );
@@ -460,13 +470,61 @@ select is(
 select test_as_user('00000000-0000-0000-0000-000000000002', 'aal2');
 
 select is(
-  (with updated as (
-     update public.organizations set display_name = 'hax2'
-     where slug = 'burger-truck'
-     returning 1)
-   select count(*)::int from updated),
+  test_rows_updated(
+    $$ update public.organizations set display_name = 'hax2'
+       where slug = 'burger-truck' $$),
   0,
   'AAL2 manager of one org cannot update a different organization'
+);
+
+-- ----------------------------------------------------------------------------
+-- Onboarding: preferred_mode (UI only) and deprecated account_type
+-- ----------------------------------------------------------------------------
+
+update public.profiles
+set preferred_mode = 'customer', onboarding_status = 'not_started'
+where id = '00000000-0000-0000-0000-000000000003';
+
+select test_as_user('00000000-0000-0000-0000-000000000003', 'aal1');
+
+select lives_ok(
+  $$ update public.profiles
+     set preferred_mode = 'customer', onboarding_status = 'in_progress'
+     where id = '00000000-0000-0000-0000-000000000003' $$,
+  'AAL1 authenticated user can set preferred_mode during onboarding'
+);
+
+select is(
+  (select preferred_mode::text from public.profiles
+   where id = '00000000-0000-0000-0000-000000000003'),
+  'customer',
+  'customer preferred_mode persisted after onboarding selection'
+);
+
+select lives_ok(
+  $$ update public.profiles
+     set preferred_mode = 'vendor'
+     where id = '00000000-0000-0000-0000-000000000003' $$,
+  'preferred_mode can be changed later (not permanently locked)'
+);
+
+select throws_ok(
+  $$ update public.profiles set account_type = 'vendor'
+     where id = '00000000-0000-0000-0000-000000000003' $$,
+  '42501',
+  null,
+  'deprecated account_type cannot be changed by clients'
+);
+
+update public.profiles
+set preferred_mode = 'vendor', onboarding_status = 'in_progress'
+where id = '00000000-0000-0000-0000-000000000002';
+
+select test_as_user('00000000-0000-0000-0000-000000000002', 'aal2');
+
+select lives_ok(
+  $$ select public.create_organization_with_owner('Cust LLC', 'Cust', 'cust-org-2') $$,
+  'any MFA-verified user can create an organization (membership grants vendor access)'
 );
 
 -- ----------------------------------------------------------------------------
@@ -513,7 +571,7 @@ select is(
 
 select is(
   (select count(*)::int from public.organizations),
-  2,
+  4,
   'AAL2 platform admin can read all organizations'
 );
 

@@ -1,27 +1,26 @@
 import Link from "next/link";
-import { Truck } from "lucide-react";
 
+import { APP_CONFIG } from "@/lib/app-config";
 import { SignOutButton } from "@/features/authentication/components/sign-out-button";
 
 /** Shared header/footer chrome for signed-in areas. */
 export function AppShell({
   children,
   nav,
+  modeSwitch,
 }: {
   children: React.ReactNode;
   nav?: { href: string; label: string }[];
+  modeSwitch?: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-full flex-col">
       <header className="border-b border-border/60 bg-background/80 backdrop-blur-sm">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Truck className="size-6 text-primary" aria-hidden="true" />
-            <span className="text-lg font-semibold tracking-tight">
-              StreetEats
-            </span>
+          <Link href="/" className="text-lg font-semibold tracking-tight">
+            {APP_CONFIG.name}
           </Link>
-          <div className="flex items-center gap-1 sm:gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
             {nav ? (
               <nav className="flex gap-3 text-sm text-muted-foreground sm:gap-5">
                 {nav.map((item) => (
@@ -35,6 +34,7 @@ export function AppShell({
                 ))}
               </nav>
             ) : null}
+            {modeSwitch}
             <SignOutButton />
           </div>
         </div>

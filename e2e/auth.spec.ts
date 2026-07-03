@@ -91,15 +91,36 @@ test.describe("auth pages", () => {
     await expect(page.getByText(/someone@example.com/)).toBeVisible();
   });
 
-  test("landing page links to sign-in and sign-up", async ({ page }) => {
+  test("landing page shows CurbAgora branding", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("link", { name: /sign in/i })).toHaveAttribute(
-      "href",
-      "/sign-in",
+    await expect(page.getByText("CurbAgora").first()).toBeVisible();
+  });
+
+  test("sign-in form uses password-manager autocomplete attributes", async ({
+    page,
+  }) => {
+    await page.goto("/sign-in");
+    await expect(page.getByLabel(/email/i)).toHaveAttribute(
+      "autocomplete",
+      "username",
     );
-    await expect(page.getByRole("link", { name: /sign up/i })).toHaveAttribute(
-      "href",
-      "/sign-up",
+    await expect(page.getByLabel(/^password$/i)).toHaveAttribute(
+      "autocomplete",
+      "current-password",
+    );
+  });
+
+  test("sign-up form uses password-manager autocomplete attributes", async ({
+    page,
+  }) => {
+    await page.goto("/sign-up");
+    await expect(page.getByLabel(/email/i)).toHaveAttribute(
+      "autocomplete",
+      "username",
+    );
+    await expect(page.getByLabel(/^password$/i)).toHaveAttribute(
+      "autocomplete",
+      "new-password",
     );
   });
 });
@@ -134,7 +155,25 @@ test.describe("open redirect protection", () => {
     await page.goto("/auth/confirm?token_hash=bogus&type=signup");
     await expect(page).toHaveURL(/\/auth\/error$/);
     await expect(
-      page.getByRole("heading", { name: /that link didn't work/i }),
+      page.getByRole("heading", { name: /this link isn.t valid anymore/i }),
     ).toBeVisible();
+  });
+
+  test("recovery interstitial verifies via same-tab POST form", async ({
+    page,
+  }) => {
+    await page.goto("/auth/recovery?token_hash=test-token&type=recovery");
+
+    const form = page.locator('form[action="/auth/confirm"][method="POST"]');
+    await expect(form).toBeVisible();
+    await expect(form.locator('input[name="token_hash"]')).toHaveValue(
+      "test-token",
+    );
+    await expect(form.locator('input[name="type"]')).toHaveValue("recovery");
+
+    const button = page.getByRole("button", {
+      name: /continue to reset password/i,
+    });
+    await expect(button).not.toHaveAttribute("target", "_blank");
   });
 });

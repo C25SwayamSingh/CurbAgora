@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ShieldCheck, Users } from "lucide-react";
 
-import { AppShell } from "@/components/app/app-shell";
+import { AuthenticatedAppShell } from "@/components/app/authenticated-app-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,20 +12,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { pageTitle } from "@/lib/app-config";
 import { isMfaMandatoryRole, requireVendorDashboard } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Vendor dashboard — StreetEats" };
+export const metadata: Metadata = { title: pageTitle("Vendor dashboard") };
 
 export default async function VendorDashboardPage() {
-  // Owners/managers cannot reach this page without a fully MFA-verified
-  // (aal2) session — MFA is mandatory for leadership roles, not optional.
   const ctx = await requireVendorDashboard("/vendor");
 
   const supabase = await createServerClient();
 
-  // RLS scopes both queries: staff see only their own membership row and
-  // their org; owners/managers see the full roster.
   const [{ data: organization }, { data: members }] = await Promise.all([
     supabase
       .from("organizations")
@@ -42,12 +39,7 @@ export default async function VendorDashboardPage() {
   const isLeadership = isMfaMandatoryRole(ctx.membership.role);
 
   return (
-    <AppShell
-      nav={[
-        { href: "/account", label: "Account" },
-        { href: "/account/security", label: "Security" },
-      ]}
-    >
+    <AuthenticatedAppShell>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -166,6 +158,6 @@ export default async function VendorDashboardPage() {
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+    </AuthenticatedAppShell>
   );
 }

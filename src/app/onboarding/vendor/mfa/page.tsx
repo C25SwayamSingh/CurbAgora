@@ -17,11 +17,11 @@ import { MfaChallengeForm } from "@/features/authentication/components/mfa-chall
 import { MfaEnrollment } from "@/features/authentication/components/mfa-enrollment";
 
 export const metadata: Metadata = {
-  title: "Two-factor setup — StreetEats",
+  title: "Two-factor setup — CurbAgora",
 };
 
 const VENDOR_ONBOARDING_STEPS = [
-  "Account type",
+  "Get started",
   "Your details",
   "Two-factor setup",
   "Your organization",
@@ -40,9 +40,6 @@ const NEXT_STEP = "/onboarding/vendor";
 export default async function VendorMfaOnboardingPage() {
   const ctx = await requireAuth("/onboarding/vendor/mfa");
 
-  if (ctx.profile?.account_type !== "vendor") {
-    redirect("/onboarding");
-  }
   if (ctx.memberships.length > 0) {
     redirect("/vendor");
   }

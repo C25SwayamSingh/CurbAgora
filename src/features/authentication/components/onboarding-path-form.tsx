@@ -6,29 +6,26 @@ import { AlertCircle, Store, UtensilsCrossed } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { chooseAccountTypeAction } from "@/features/authentication/actions";
+import { chooseOnboardingPathAction } from "@/features/authentication/actions";
 import { idleState } from "@/features/authentication/action-state";
 import { SubmitButton } from "@/features/authentication/components/submit-button";
 
 /**
- * One-time customer/vendor choice. This selects an onboarding path — it does
- * not grant any vendor data access by itself (that comes from organization
- * membership, enforced in the database).
+ * First onboarding step: pick a starting path. Sets preferred_mode (UI only)
+ * and routes into customer or vendor onboarding — not permanent authorization.
  */
-export function AccountTypeForm({
-  initialAccountType,
+export function OnboardingPathForm({
+  initialPreferredMode,
 }: {
-  initialAccountType: "customer" | "vendor" | null;
+  initialPreferredMode: "customer" | "vendor" | null;
 }) {
   const [state, formAction] = useActionState(
-    chooseAccountTypeAction,
+    chooseOnboardingPathAction,
     idleState,
   );
   const [selected, setSelected] = React.useState<"customer" | "vendor" | null>(
-    initialAccountType,
+    initialPreferredMode,
   );
-
-  const locked = Boolean(initialAccountType);
 
   return (
     <form action={formAction} className="space-y-4" noValidate>
@@ -39,8 +36,8 @@ export function AccountTypeForm({
         </Alert>
       ) : null}
 
-      <fieldset className="grid gap-3 sm:grid-cols-2" disabled={locked}>
-        <legend className="sr-only">Choose your account type</legend>
+      <fieldset className="grid gap-3 sm:grid-cols-2">
+        <legend className="sr-only">What would you like to do first?</legend>
 
         <label
           className={cn(
@@ -48,12 +45,11 @@ export function AccountTypeForm({
             selected === "customer"
               ? "border-primary ring-2 ring-ring"
               : "border-border hover:bg-accent/50",
-            locked && selected !== "customer" && "opacity-50",
           )}
         >
           <input
             type="radio"
-            name="accountType"
+            name="preferredMode"
             value="customer"
             checked={selected === "customer"}
             onChange={() => setSelected("customer")}
@@ -64,9 +60,9 @@ export function AccountTypeForm({
             className="size-6 text-brand-fresh"
             aria-hidden="true"
           />
-          <span className="font-medium">I&apos;m a customer</span>
+          <span className="font-medium">Discover vendors</span>
           <span className="text-sm text-muted-foreground">
-            Discover food carts, trucks, and pop-ups near you.
+            Find food carts, trucks, and pop-ups near you.
           </span>
         </label>
 
@@ -76,35 +72,29 @@ export function AccountTypeForm({
             selected === "vendor"
               ? "border-primary ring-2 ring-ring"
               : "border-border hover:bg-accent/50",
-            locked && selected !== "vendor" && "opacity-50",
           )}
         >
           <input
             type="radio"
-            name="accountType"
+            name="preferredMode"
             value="vendor"
             checked={selected === "vendor"}
             onChange={() => setSelected("vendor")}
             className="sr-only"
           />
           <Store className="size-6 text-brand-warm" aria-hidden="true" />
-          <span className="font-medium">I&apos;m a vendor</span>
+          <span className="font-medium">Set up my vendor business</span>
           <span className="text-sm text-muted-foreground">
-            List your mobile food business and reach more customers.
+            Create your organization after profile setup and two-factor
+            authentication.
           </span>
         </label>
       </fieldset>
 
-      {locked ? (
-        <p className="text-sm text-muted-foreground">
-          Your account type is already set. Continue below.
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          This choice is permanent for this account and can&apos;t be changed
-          later.
-        </p>
-      )}
+      <p className="text-sm text-muted-foreground">
+        You can switch between customer and vendor interfaces anytime. Vendor
+        access requires joining or creating an organization.
+      </p>
 
       <SubmitButton className="w-full sm:w-auto" pendingLabel="Continuing…">
         Continue

@@ -19,6 +19,7 @@ site_url = "http://localhost:3000"
 additional_redirect_urls = [
   "http://localhost:3000/auth/callback",
   "http://localhost:3000/auth/confirm",
+  "http://localhost:3000/auth/recovery",
 ]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
@@ -28,6 +29,16 @@ enable_signup = true
 enable_signup = true
 enable_confirmations = true
 double_confirm_changes = true
+# Default is 1m — slows repeated local reset-email testing in Mailpit.
+max_frequency = "1s"
+
+[auth.rate_limit]
+# Default is 2/hour; too low for local auth flow testing.
+email_sent = 1000
+
+[auth.email.template.recovery]
+subject = "Reset your password"
+content_path = "./supabase/templates/recovery.html"
 
 # TOTP multi-factor authentication (Phase 2 foundation)
 [auth.mfa.totp]

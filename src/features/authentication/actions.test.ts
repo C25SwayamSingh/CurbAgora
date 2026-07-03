@@ -19,8 +19,9 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import {
-  chooseAccountTypeAction,
+  chooseOnboardingPathAction,
   completeVendorProfileAction,
+  setPreferredModeAction,
   signInAction,
   signUpAction,
   updateProfileAction,
@@ -150,16 +151,18 @@ describe("updateProfileAction (mass assignment protection)", () => {
   it("only writes whitelisted columns", async () => {
     const client = useSupabase({
       user,
-      profile: { id: "user-1", account_type: "customer" },
+      profile: {
+        id: "user-1",
+        preferred_mode: "customer",
+      },
     });
 
     const state = await updateProfileAction(
       idleState,
       form({
         displayName: "New Name",
-        avatarUrl: "",
-        // Attempted mass assignment — must be ignored:
         account_type: "vendor",
+        preferred_mode: "vendor",
         onboarding_status: "complete",
         id: "someone-else",
       }),
@@ -169,7 +172,6 @@ describe("updateProfileAction (mass assignment protection)", () => {
     expect(client.update).toHaveBeenCalledTimes(1);
     expect(client.update).toHaveBeenCalledWith({
       display_name: "New Name",
-      avatar_url: null,
     });
   });
 
@@ -181,71 +183,125 @@ describe("updateProfileAction (mass assignment protection)", () => {
   });
 });
 
-describe("chooseAccountTypeAction", () => {
+describe("chooseOnboardingPathAction", () => {
   it("rejects values outside the enum", async () => {
-    useSupabase({ user, profile: { id: "user-1", account_type: null } });
-    const state = await chooseAccountTypeAction(
-      idleState,
-      form({ accountType: "admin" }),
-    );
-    expect(state.status).toBe("error");
-  });
-
-  it("refuses to change an already-set account type", async () => {
     useSupabase({
       user,
-      profile: { id: "user-1", account_type: "customer" },
+      profile: { id: "user-1", preferred_mode: "customer" },
     });
-    const state = await chooseAccountTypeAction(
+    const state = await chooseOnboardingPathAction(
       idleState,
-      form({ accountType: "vendor" }),
+      form({ preferredMode: "admin" }),
     );
     expect(state.status).toBe("error");
-    expect(state.message).toMatch(/already set/i);
   });
 
-  it("routes vendors to the personal-profile step (not straight to org creation)", async () => {
-    useSupabase({ user, profile: { id: "user-1", account_type: null } });
+  it("routes vendors to the personal-profile step", async () => {
+    useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+    });
     await expect(
-      chooseAccountTypeAction(idleState, form({ accountType: "vendor" })),
+      chooseOnboardingPathAction(idleState, form({ preferredMode: "vendor" })),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor/profile");
+  });
+
+  it("routes customers to customer onboarding", async () => {
+    useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+    });
+    await expect(
+      chooseOnboardingPathAction(
+        idleState,
+        form({ preferredMode: "customer" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/onboarding/customer");
+  });
+
+  it("persists preferred_mode and onboarding_status on success", async () => {
+    const client = useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+    });
+    await expect(
+      chooseOnboardingPathAction(
+        idleState,
+        form({ preferredMode: "customer" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/onboarding/customer");
+    expect(client.update).toHaveBeenCalledWith({
+      preferred_mode: "customer",
+      onboarding_status: "in_progress",
+    });
+  });
+
+  it("allows changing path — onboarding is not permanently locked", async () => {
+    useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+    });
+    await expect(
+      chooseOnboardingPathAction(idleState, form({ preferredMode: "vendor" })),
     ).rejects.toThrow("REDIRECT:/onboarding/vendor/profile");
   });
 });
 
-describe("completeVendorProfileAction (vendor onboarding step 2)", () => {
-  it("requires a vendor account", async () => {
+describe("setPreferredModeAction", () => {
+  it("switches to customer interface", async () => {
     useSupabase({
       user,
-      profile: { id: "user-1", account_type: "customer" },
+      profile: { id: "user-1", preferred_mode: "vendor" },
+      memberships: [
+        {
+          id: "m1",
+          organization_id: "org-1",
+          user_id: "user-1",
+          role: "owner",
+          status: "active",
+        },
+      ],
     });
-    const state = await completeVendorProfileAction(
-      idleState,
-      form({ displayName: "Maria" }),
-    );
-    expect(state.status).toBe("error");
+    await expect(
+      setPreferredModeAction(form({ preferredMode: "customer" })),
+    ).rejects.toThrow("REDIRECT:/customer");
   });
 
-  it("saves the profile and routes to the mandatory MFA step, not org creation", async () => {
+  it("does not grant vendor access without membership", async () => {
+    useSupabase({
+      user,
+      profile: {
+        id: "user-1",
+        preferred_mode: "customer",
+        display_name: "Alex",
+      },
+    });
+    await expect(
+      setPreferredModeAction(form({ preferredMode: "vendor" })),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor/mfa");
+  });
+});
+
+describe("completeVendorProfileAction (vendor onboarding step 2)", () => {
+  it("saves the profile and routes to the mandatory MFA step", async () => {
     const client = useSupabase({
       user,
-      profile: { id: "user-1", account_type: "vendor" },
+      profile: { id: "user-1", preferred_mode: "vendor" },
     });
     await expect(
       completeVendorProfileAction(
         idleState,
         form({
           displayName: "Maria",
-          avatarUrl: "",
-          // Attempted mass assignment — must be ignored:
           onboarding_status: "complete",
-          account_type: "customer",
+          preferred_mode: "customer",
         }),
       ),
     ).rejects.toThrow("REDIRECT:/onboarding/vendor/mfa");
 
     expect(client.update).toHaveBeenCalledWith({
       display_name: "Maria",
-      avatar_url: null,
+      preferred_mode: "vendor",
     });
   });
 });

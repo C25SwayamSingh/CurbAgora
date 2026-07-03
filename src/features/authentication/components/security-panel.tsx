@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { useActionState } from "react";
+import Link from "next/link";
 import { AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
+  signOutAction,
   signOutOtherSessionsAction,
   unenrollMfaAction,
 } from "@/features/authentication/actions";
@@ -14,6 +16,7 @@ import {
   idleState,
   type ActionState,
 } from "@/features/authentication/action-state";
+import { ChangePasswordForm } from "@/features/authentication/components/change-password-form";
 import { MfaEnrollment } from "@/features/authentication/components/mfa-enrollment";
 import { SubmitButton } from "@/features/authentication/components/submit-button";
 
@@ -51,6 +54,21 @@ export function SecurityPanel({
 
   return (
     <div className="space-y-8">
+      <section className="space-y-3">
+        <h3 className="font-medium">Password</h3>
+        <p className="text-sm text-muted-foreground">
+          Update your password while signed in, or use{" "}
+          <Link
+            href="/forgot-password"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            password reset
+          </Link>{" "}
+          if you cannot sign in.
+        </p>
+        <ChangePasswordForm />
+      </section>
+
       <section className="space-y-3">
         <h3 className="font-medium">Two-factor authentication (TOTP)</h3>
 
@@ -118,11 +136,10 @@ export function SecurityPanel({
       </section>
 
       <section className="space-y-3">
-        <h3 className="font-medium">Active sessions</h3>
+        <h3 className="font-medium">Sessions</h3>
         <p className="text-sm text-muted-foreground">
-          You are signed in on this device. If you signed in somewhere you
-          don&apos;t recognize, sign out of all other sessions — they will need
-          your password (and code, if enabled) to get back in.
+          Other sessions are browsers or devices where this account is still
+          signed in. Sign them out if you do not recognize a device.
         </p>
 
         {sessionsState.status === "success" && sessionsState.message ? (
@@ -138,17 +155,22 @@ export function SecurityPanel({
           </Alert>
         ) : null}
 
-        <Button
-          variant="outline"
-          onClick={revokeOtherSessions}
-          disabled={revoking}
-        >
-          {revoking ? "Signing out other sessions…" : "Sign out other sessions"}
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          A per-device session list is not available on the current plan; this
-          revokes every session except the one you are using now.
-        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={revokeOtherSessions}
+            disabled={revoking}
+          >
+            {revoking
+              ? "Signing out other sessions…"
+              : "Sign out other sessions"}
+          </Button>
+          <form action={signOutAction}>
+            <SubmitButton variant="outline" pendingLabel="Signing out…">
+              Sign out
+            </SubmitButton>
+          </form>
+        </div>
       </section>
     </div>
   );

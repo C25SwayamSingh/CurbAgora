@@ -5,10 +5,11 @@ Production-ready platform for mobile food vendors - food carts, food trucks, sta
 ## Status — Phase 2: Authentication & Tenancy
 
 Implemented: Supabase authentication (cookie sessions via @supabase/ssr),
-email verification, password reset, customer/vendor onboarding, vendor
-organizations with role-based memberships (owner/manager/staff), a platform
-admin foundation, TOTP MFA, and database-level tenant isolation (RLS
-default-deny + versioned migrations). **MFA (TOTP, aal2) is mandatory —
+email verification, password reset, dual-mode onboarding (customer + vendor
+on one account), interface mode switching, vendor organizations with
+role-based memberships (owner/manager/staff), a platform admin foundation,
+TOTP MFA, and database-level tenant isolation (RLS default-deny + versioned
+migrations). Branding is centralized in `src/lib/app-config.ts` (**CurbAgora**). **MFA (TOTP, aal2) is mandatory —
 not optional — for organization owners/managers and for platform admins**,
 enforced independently in the server guards, the sensitive server actions,
 and the database (see [Security Model](docs/SECURITY_MODEL.md)). Session

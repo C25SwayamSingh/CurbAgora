@@ -15,8 +15,9 @@ export async function GET(request: NextRequest) {
   const redirectTo = request.nextUrl.clone();
   redirectTo.search = "";
 
+  const supabase = await createServerClient();
+
   if (code) {
-    const supabase = await createServerClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       redirectTo.pathname = next;
@@ -24,6 +25,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // The PKCE code is single-use. Email clients or extra tabs often hit this
+  // route again after the first exchange already succeeded in this browser.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    redirectTo.pathname = next;
+    return NextResponse.redirect(redirectTo);
+  }
+
   redirectTo.pathname = "/auth/error";
+  if (next === "/reset-password") {
+    redirectTo.searchParams.set("flow", "recovery");
+  }
   return NextResponse.redirect(redirectTo);
 }

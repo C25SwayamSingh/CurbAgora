@@ -31,31 +31,35 @@
 
 ### Onboarding
 
-1. First protected visit goes to `/onboarding`: one-time choice of
-   **customer** or **vendor** (permanent; enforced by DB trigger).
-2. **Customer:** complete basic profile → `/customer` dashboard.
-3. **Vendor — mandatory MFA sequence** (organization owners must be
-   MFA-verified before they can create an org):
-   1. `/onboarding/vendor/profile` — personal profile (display name,
-      optional avatar).
-   2. `/onboarding/vendor/mfa` — enroll a TOTP factor (QR + manual secret +
-      first code) **and** verify it this session. Not optional and not
-      skippable — the next step independently re-checks this.
-   3. `/onboarding/vendor` — organization details (business name, legal
-      name, URL slug) → org + initial owner membership created atomically
-      in one DB transaction, itself independently rejecting the request if
-      the session is not aal2. Duplicate submissions cannot create a second
-      org.
-   4. `/vendor` dashboard.
-4. Partially onboarded users are always routed back to their next
-   incomplete step (`resolveVendorOnboardingPath()`).
+1. First protected visit goes to `/onboarding`: **“What would you like to do
+   first?”** — **Discover vendors** (customer path) or **Set up my vendor
+   business** (vendor path). This sets `preferred_mode` (UI only); it is not
+   permanent and can be changed from the header mode switch.
+2. **Customer:** complete basic profile → `/customer` dashboard. Every
+   authenticated user can use customer mode, including vendor members.
+3. **Vendor — mandatory MFA sequence** (organization creation requires aal2):
+   1. `/onboarding/vendor/profile` — personal profile (display name; initials
+      avatar in UI).
+   2. `/onboarding/vendor/mfa` — enroll TOTP and verify this session.
+   3. `/onboarding/vendor` — organization details → atomic org + owner
+      membership. Users may return to customer home before creating an org.
+   4. `/vendor` dashboard (membership required).
+4. **Become a vendor later:** same account → mode switch or account page →
+   vendor onboarding (profile if needed → MFA → org).
+5. Partially onboarded users resume via `resolveVendorOnboardingPath()`.
+
+### Interface mode switch
+
+Signed-in header toggle: **Customer** / **Vendor** (or **Become a vendor**
+without membership). Updates `preferred_mode` only; vendor routes still require
+active `organization_members` (server guards + RLS).
 
 ### Account & security
 
-1. `/account` — edit display name and avatar URL (approved fields only).
-2. `/account/security` — enroll TOTP (QR + manual secret + first code),
-   remove a factor (requires MFA-verified session), sign out all other
-   sessions.
+1. `/account` — display name, read-only email, initials avatar, preferred
+   mode, organization summary, links to security and vendor setup.
+2. `/account/security` — change password, TOTP MFA, sign out, sign out other
+   sessions, recovery guidance.
 3. `/mfa-enroll` — the mandatory-MFA redirect target when an organization
    owner/manager (or platform admin) with no enrolled factor attempts a
    sensitive action outside onboarding; returns to the original destination

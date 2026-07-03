@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { ForgotPasswordForm } from "@/features/authentication/components/forgot-password-form";
 
-export const metadata: Metadata = { title: "Reset password — StreetEats" };
+export const metadata: Metadata = { title: "Reset password — CurbAgora" };
 
 export default function ForgotPasswordPage() {
   return (

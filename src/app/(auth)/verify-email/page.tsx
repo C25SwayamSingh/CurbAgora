@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata: Metadata = { title: "Verify your email — StreetEats" };
+export const metadata: Metadata = { title: "Verify your email — CurbAgora" };
 
 export default async function VerifyEmailPage({
   searchParams,

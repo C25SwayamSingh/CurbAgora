@@ -47,24 +47,8 @@ export function CustomerOnboardingForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="avatarUrl">Avatar URL (optional)</Label>
-        <Input
-          id="avatarUrl"
-          name="avatarUrl"
-          type="url"
-          placeholder="https://…"
-          aria-describedby="avatarUrl-error"
-          aria-invalid={Boolean(state.fieldErrors?.avatarUrl)}
-        />
-        <FieldError
-          id="avatarUrl-error"
-          errors={state.fieldErrors?.avatarUrl}
-        />
-      </div>
-
       <SubmitButton className="w-full sm:w-auto" pendingLabel="Finishing up…">
-        Finish and go to my dashboard
+        Finish and explore vendors
       </SubmitButton>
     </form>
   );

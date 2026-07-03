@@ -50,6 +50,7 @@ const baseUser = { id: "user-1", email: "user@example.com" };
 const customerProfile = {
   id: "user-1",
   account_type: "customer" as const,
+  preferred_mode: "customer" as const,
   onboarding_status: "complete" as const,
   display_name: "Customer",
 };
@@ -57,6 +58,7 @@ const customerProfile = {
 const vendorProfile = {
   ...customerProfile,
   account_type: "vendor" as const,
+  preferred_mode: "vendor" as const,
   display_name: "Vendor",
 };
 
@@ -102,8 +104,8 @@ describe("customer (onboarded)", () => {
     expect(ctx.profile?.account_type).toBe("customer");
   });
 
-  it("cannot access vendor areas (redirected to own dashboard)", async () => {
-    await expectRedirect(requireVendorMember(), "/customer");
+  it("cannot access vendor areas (redirected to vendor onboarding)", async () => {
+    await expectRedirect(requireVendorMember(), "/onboarding/vendor");
   });
 
   it("cannot access admin (redirected home)", async () => {
@@ -168,15 +170,16 @@ describe("vendor roles", () => {
     await expectRedirect(requireVendorMember(), "/onboarding/vendor");
   });
 
-  it("customer flipping frontend state still cannot pass vendor guard", async () => {
-    // Even if the client claims vendor-ness, the guard reads account_type
-    // and memberships from the database, so a customer is bounced.
+  it("customer with forged preferred vendor mode still cannot pass vendor guard", async () => {
     useSupabase({
       user: baseUser,
-      profile: customerProfile,
+      profile: {
+        ...customerProfile,
+        preferred_mode: "vendor",
+      },
       memberships: [],
     });
-    await expectRedirect(requireVendorMember(["owner"]), "/customer");
+    await expectRedirect(requireVendorMember(["owner"]), "/onboarding/vendor");
   });
 });
 
@@ -251,14 +254,15 @@ describe("mandatory MFA for organization owners/managers", () => {
       expect(ctx.aal).toBe("aal2");
     });
 
-    it("still rejects a customer account regardless of MFA state", async () => {
+    it("allows any onboarded user with MFA to create an organization", async () => {
       useSupabase({
         user: baseUser,
         profile: customerProfile,
         currentLevel: "aal2",
         nextLevel: "aal2",
       });
-      await expectRedirect(requireVendorForOrgCreation(), "/customer");
+      const ctx = await requireVendorForOrgCreation();
+      expect(ctx.aal).toBe("aal2");
     });
   });
 

@@ -11,7 +11,7 @@ import { idleState } from "@/features/authentication/action-state";
 import { FieldError } from "@/features/authentication/components/field-error";
 import { SubmitButton } from "@/features/authentication/components/submit-button";
 
-/** Step 2 of vendor onboarding: personal profile, before MFA + organization. */
+/** Vendor onboarding profile step before MFA and organization creation. */
 export function VendorProfileForm({
   initialDisplayName,
 }: {
@@ -45,22 +45,6 @@ export function VendorProfileForm({
         <FieldError
           id="displayName-error"
           errors={state.fieldErrors?.displayName}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="avatarUrl">Avatar URL (optional)</Label>
-        <Input
-          id="avatarUrl"
-          name="avatarUrl"
-          type="url"
-          placeholder="https://…"
-          aria-describedby="avatarUrl-error"
-          aria-invalid={Boolean(state.fieldErrors?.avatarUrl)}
-        />
-        <FieldError
-          id="avatarUrl-error"
-          errors={state.fieldErrors?.avatarUrl}
         />
       </div>
 

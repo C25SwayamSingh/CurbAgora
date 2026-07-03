@@ -12,7 +12,7 @@ import { requireAuth } from "@/lib/auth/guards";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { MfaChallengeForm } from "@/features/authentication/components/mfa-challenge-form";
 
-export const metadata: Metadata = { title: "Two-factor check — StreetEats" };
+export const metadata: Metadata = { title: "Two-factor check — CurbAgora" };
 
 export default async function MfaChallengePage({
   searchParams,

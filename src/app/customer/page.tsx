@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 
-import { AppShell } from "@/components/app/app-shell";
+import { AuthenticatedAppShell } from "@/components/app/authenticated-app-shell";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,20 +11,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { pageTitle } from "@/lib/app-config";
 import { requireCustomer } from "@/lib/auth/guards";
 
-export const metadata: Metadata = { title: "Home — StreetEats" };
+export const metadata: Metadata = { title: pageTitle("Home") };
 
 export default async function CustomerDashboardPage() {
   const ctx = await requireCustomer("/customer");
 
   return (
-    <AppShell
-      nav={[
-        { href: "/account", label: "Account" },
-        { href: "/account/security", label: "Security" },
-      ]}
-    >
+    <AuthenticatedAppShell>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -66,6 +62,6 @@ export default async function CustomerDashboardPage() {
           </Card>
         </div>
       </div>
-    </AppShell>
+    </AuthenticatedAppShell>
   );
 }

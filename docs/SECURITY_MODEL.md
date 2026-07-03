@@ -44,20 +44,26 @@ the unverified local session payload.
 
 ## Role Hierarchy
 
-| Role            | Source of truth                         | Scope                                                      |
-| --------------- | --------------------------------------- | ---------------------------------------------------------- |
-| Anonymous       | no session                              | Public pages only                                          |
-| Customer        | `profiles.account_type = 'customer'`    | Own profile, customer dashboard                            |
-| Vendor (no org) | `profiles.account_type = 'vendor'`      | Own profile, vendor onboarding                             |
-| Staff           | `organization_members.role = 'staff'`   | Own membership + own org basics                            |
-| Manager         | `organization_members.role = 'manager'` | Org roster; manage staff/managers (never owners)           |
-| Owner           | `organization_members.role = 'owner'`   | Full org management                                        |
-| Platform admin  | `platform_admins` row                   | Cross-tenant read + future moderation; requires MFA (aal2) |
+| Role              | Source of truth                         | Scope                                                      |
+| ----------------- | --------------------------------------- | ---------------------------------------------------------- |
+| Anonymous         | no session                              | Public pages only                                          |
+| Customer          | Any onboarded user (always available)   | Own profile, customer dashboard                            |
+| Vendor access     | Active `organization_members` row       | Vendor dashboard and org-scoped data                       |
+| Vendor onboarding | No membership yet                       | Profile, MFA, org creation flows                           |
+| Staff             | `organization_members.role = 'staff'`   | Own membership + own org basics                            |
+| Manager           | `organization_members.role = 'manager'` | Org roster; manage staff/managers (never owners)           |
+| Owner             | `organization_members.role = 'owner'`   | Full org management                                        |
+| Platform admin    | `platform_admins` row                   | Cross-tenant read + future moderation; requires MFA (aal2) |
 
-`account_type` is a one-time onboarding choice enforced by a DB trigger —
-it selects an experience, it does not grant data access by itself. All data
-access flows from membership rows and the admin table, which clients cannot
-self-assign.
+`preferred_mode` controls navigation and default post-login destination only.
+Vendor authorization comes exclusively from active organization membership
+(and platform admin rows). The deprecated `account_type` column is retained
+for safe migration but cannot be changed by clients.
+
+Optional **passkeys (WebAuthn)** may be added later via Supabase experimental
+support — see `src/features/authentication/actions.ts` and auth forms; the
+current email/password flow remains the stable default and is structured so
+passkey sign-in can be added without rewriting authorization guards.
 
 ### Platform admin design decision
 
@@ -75,7 +81,8 @@ RLS is enabled on every table; the default is deny. Policy intent:
 - **profiles** — users read/update their own row; co-members of an active
   shared org can read each other (for rosters); platform admins read all.
   No public/anonymous access; no client-side insert/delete. A trigger blocks
-  changes to `id`, `created_at`, and any change of a non-null `account_type`.
+  changes to `id`, `created_at`, and any change to `account_type` (deprecated).
+  Users may update `preferred_mode` (UI only).
 - **organizations** — visible only to active members and platform admins.
   Updates: owners only, and protected fields (`created_by`, `id`,
   `created_at`) are trigger-locked. No insert policy: creation only via
@@ -110,6 +117,16 @@ performs its own explicit `auth.jwt() ->> 'aal' = 'aal2'` check before doing
 anything else — the only way to close that bypass for a DEFINER function.
 Without this, initial organization creation could never be gated by MFA no
 matter how the table-level RLS policies were written.
+
+`protect_membership_update()` and `protect_membership_delete()` are also
+SECURITY DEFINER (required to count active owners org-wide without RLS
+recursion). Inside DEFINER functions, `current_user` is the function owner
+(`postgres`), not the API caller. Protections that must apply to
+`authenticated` clients therefore gate on `current_setting('role', true)`
+(which Supabase and the pgTAP harness set to `authenticated`/`anon`), not on
+`current_user`. Migration `20260704000000_fix_membership_definer_triggers.sql`
+closed a bypass where self role changes and final-owner deletion were not
+blocked for API clients.
 
 ## MFA (Supabase TOTP) — mandatory for owners/managers and platform admins
 
@@ -206,6 +223,9 @@ independently so a bypass at one layer alone cannot grant access:
   slug constraint and unique live-membership index).
 - **Email enumeration** — password reset always reports success; sign-up
   does not reveal whether an email already exists.
+- **Auth email links (PKCE)** — local Supabase recovery emails carry PKCE
+  tokens; password-reset `redirectTo` must target `/auth/callback` (code
+  exchange), not `/auth/confirm` (`token_hash` OTP verification).
 - **Validation** — all inputs re-validated server-side with Zod; the DB
   function re-validates again.
 - **Error handling** — raw auth/database errors are logged server-side;
@@ -215,7 +235,7 @@ independently so a bypass at one layer alone cannot grant access:
 
 Enforced by `src/lib/auth/guards.test.ts` (server guards, mocked) and
 `supabase/tests/001_rls_policies.sql` (database policies + AAL enforcement,
-46 pgTAP assertions).
+51 pgTAP assertions).
 
 | Persona ↓ / Access →   | Own profile | Other profile   | Own org (read) | Own org (write)   | Other org | Org roster | Grant owner       | Change own role | Remove final owner | /admin |
 | ---------------------- | ----------- | --------------- | -------------- | ----------------- | --------- | ---------- | ----------------- | --------------- | ------------------ | ------ |

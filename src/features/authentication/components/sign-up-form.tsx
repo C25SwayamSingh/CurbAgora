@@ -47,7 +47,7 @@ export function SignUpForm() {
           id="email"
           name="email"
           type="email"
-          autoComplete="email"
+          autoComplete="username"
           required
           aria-describedby="email-error"
           aria-invalid={Boolean(state.fieldErrors?.email)}

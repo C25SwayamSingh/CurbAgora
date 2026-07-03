@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import Image from "next/image";
 import { AlertCircle, ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -71,12 +70,12 @@ export function MfaEnrollment({ nextPath }: { nextPath?: string } = {}) {
 
       {enrollment.qrCode ? (
         <div className="flex justify-center rounded-lg border border-border bg-white p-4">
-          <Image
+          {/* Supabase returns an otpauth QR as a data URL — use img, not next/image. */}
+          <img
             src={enrollment.qrCode}
             alt="QR code for authenticator app enrollment"
             width={176}
             height={176}
-            unoptimized
           />
         </div>
       ) : null}
