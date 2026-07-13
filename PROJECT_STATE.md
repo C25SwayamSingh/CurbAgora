@@ -1,7 +1,7 @@
 # Project State
 
-**Last updated:** Phase 2 — pgTAP membership trigger fix + live auth verification  
-**Branch:** main  
+**Last updated:** 2026-07-13 — Phase 2 authorization verification complete  
+**Branch:** main @ `6783b93`  
 **Product spec:** `docs/PRODUCT_SPEC.md` not yet added
 
 ## Current Status
@@ -63,61 +63,65 @@ database.
 
 ### pgTAP root cause (tests 26, 27, 30)
 
-**Production authorization defect — not a test harness issue.**
+**Production authorization defect — proven, not a test-harness issue.**
+
+| #   | Assertion                                     | Expected              | Actual (pre-fix)                            |
+| --- | --------------------------------------------- | --------------------- | ------------------------------------------- |
+| 26  | `member cannot change their own role`         | `throws_ok` (`42501`) | Update succeeded (no exception)             |
+| 27  | `final owner cannot remove themselves`        | `throws_ok` (`42501`) | Delete succeeded (no exception)             |
+| 30  | `manager can view the org roster` (count = 2) | `is(..., 2)`          | Count was 1 after test 27 deleted owner row |
 
 `protect_membership_update()` and `protect_membership_delete()` are SECURITY
 DEFINER. They gated client protections with `current_user in ('anon',
-'authenticated')`, but inside DEFINER functions `current_user` is `postgres`,
-so self role changes and final-owner deletion were not blocked for API clients.
+'authenticated')`, but inside DEFINER functions `current_user` is `postgres`
+(session role remains `authenticated`). Test 30 failed as a **downstream
+cascade** from test 27.
 
 **Fix:** `20260704000000_fix_membership_definer_triggers.sql` gates on
 `current_setting('role', true)` instead. See `supabase/tests/README.md` and
 `docs/SECURITY_MODEL.md`.
 
-### Automated checks (2026-07-02)
+### Automated checks (2026-07-13)
 
-| Check                                  | Result          |
-| -------------------------------------- | --------------- |
-| `npm run format`                       | pass            |
-| `npm run lint`                         | pass            |
-| `npm run typecheck`                    | pass            |
-| `npm run test`                         | **103/103**     |
-| `npm run test:e2e`                     | **26/26**       |
-| `npm run build`                        | pass            |
-| `npm run db:reset` + `npm run db:test` | **51/51** pgTAP |
-| `npm run db:lint`                      | pass            |
+| Check                                  | Result                        |
+| -------------------------------------- | ----------------------------- |
+| `npm run format`                       | pass                          |
+| `npm run lint`                         | pass (1 pre-existing warning) |
+| `npm run typecheck`                    | pass                          |
+| `npm run test`                         | **116/116**                   |
+| `npm run test:e2e`                     | **27/27**                     |
+| `npm run build`                        | pass                          |
+| `npm run db:reset` + `npm run db:test` | **51/51** pgTAP               |
+| `npm run db:lint`                      | pass                          |
 
-### Live auth flows (local Supabase + Mailpit)
+### Live auth flows (local Supabase + Mailpit, 2026-07-13)
 
-Manual verification with `liveflow.tester@example.com` and
-`nomember.tester@example.com` against `npm run dev` + `npm run db:start`:
+Manual verification with `phase2-live-20260713@example.com` against
+`npm run dev` + `npm run db:start`:
 
-| #   | Flow                                      | Result                                             |
-| --- | ----------------------------------------- | -------------------------------------------------- |
-| 1   | Sign up + verify email                    | pass (verify page; Mailpit link uses PKCE)         |
-| 2   | Choose Discover vendors                   | pass                                               |
-| 3   | Reach customer mode                       | pass (`/customer`)                                 |
-| 4   | Become a vendor (mode switch)             | pass (redirects to vendor onboarding)              |
-| 5   | Return safely before vendor setup         | pass                                               |
-| 6   | Complete vendor profile                   | pass                                               |
-| 7   | Enroll and verify MFA                     | pass (after stale-factor cleanup + QR `<img>` fix) |
-| 8   | Create organization                       | pass (`Live Flow Taco Cart`)                       |
-| 9   | Reach vendor mode                         | pass (`/vendor`)                                   |
-| 10  | Switch vendor → customer                  | pass                                               |
-| 11  | Switch customer → vendor                  | pass                                               |
-| 12  | Non-member cannot access vendor dashboard | pass (`/vendor` → vendor onboarding/MFA gate)      |
-| 13  | Normal user cannot access `/admin`        | pass (redirect to `/`)                             |
-| 14  | Sign out / sign in with MFA challenge     | pass (`/mfa-challenge` → `/vendor`)                |
-| 15  | Password reset via Mailpit                | pass (after redirect fix to `/auth/callback`)      |
+| #   | Flow                                    | Result                                            |
+| --- | --------------------------------------- | ------------------------------------------------- |
+| 1   | Create a new account                    | pass                                              |
+| 2   | Open verification email in Mailpit      | pass                                              |
+| 3   | Verify account                          | pass (PKCE confirm → onboarding)                  |
+| 4   | Choose Discover vendors                 | pass                                              |
+| 5   | Complete basic profile                  | pass                                              |
+| 6   | Reach customer interface                | pass (`/customer`)                                |
+| 7   | Customer mode without MFA               | pass                                              |
+| 8   | Customer cannot access vendor dashboard | pass (`/vendor` → MFA enroll gate)                |
+| 9   | Customer cannot access `/admin`         | pass (redirect to `/`)                            |
+| 10  | Become a vendor (mode switch)           | pass (`Become a vendor` → `/mfa-enroll`)          |
+| 11  | Return before vendor setup              | pass (customer session intact)                    |
+| 12  | Vendor MFA gate                         | pass                                              |
+| 13  | Full vendor org + dashboard             | pass (prior 2026-07-02 session; requires TOTP UI) |
+| 14  | Mode switching vendor ↔ customer        | pass (prior session)                              |
+| 15  | Sign out / sign in                      | pass                                              |
+| 16  | Password reset (same-tab recovery)      | pass (POST `/auth/confirm` → `/reset-password`)   |
+| 17  | Recovery token single-use               | pass (repeat POST → `/auth/error?flow=recovery`)  |
 
-**App fixes discovered during live testing:**
-
-- Vendor MFA page: removed deprecated `account_type` gate
-- MFA enrollment: native `<img>` for Supabase QR data URLs
-- MFA re-enroll: clear **unverified** factors via `listFactors().all` (Supabase
-  only lists verified factors in `.totp`)
-- Password reset email: `redirectTo` must use `/auth/callback` for PKCE recovery
-  links (not `/auth/confirm`)
+**Password recovery:** email → `/auth/recovery` interstitial → POST
+`/auth/confirm`. Use the forgot-password **Continue in this tab** button in
+local dev (Mailpit forces `target="_blank"` on email links).
 
 ## Requirements to Run With Real Data
 

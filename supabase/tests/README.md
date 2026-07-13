@@ -55,6 +55,12 @@ if current_user in ('anon', 'authenticated')
 never ran for API clients — self role changes and final-owner deletion were
 not blocked.
 
+| Test | What it checks                         | Why it failed pre-fix                           |
+| ---- | -------------------------------------- | ----------------------------------------------- |
+| 26   | Owner `UPDATE` own `role` → `42501`    | Trigger guard skipped; update succeeded         |
+| 27   | Final owner `DELETE` own row → `42501` | Trigger guard skipped; delete succeeded         |
+| 30   | Manager sees roster count `2`          | Test 27 removed the owner row; count became `1` |
+
 **Fix:** migration `20260704000000_fix_membership_definer_triggers.sql` gates
 on `current_setting('role', true)` instead, which remains `authenticated` for
 client sessions. Test 26 now expects a trigger exception (`throws_ok`) rather
