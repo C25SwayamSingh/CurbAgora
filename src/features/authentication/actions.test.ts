@@ -19,12 +19,15 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import {
+  cancelMfaEnrollmentAction,
   chooseOnboardingPathAction,
   completeVendorProfileAction,
+  enrollMfaAction,
   setPreferredModeAction,
   signInAction,
   signUpAction,
   updateProfileAction,
+  verifyMfaEnrollmentAction,
 } from "@/features/authentication/actions";
 import { idleState } from "@/features/authentication/action-state";
 
@@ -303,5 +306,162 @@ describe("completeVendorProfileAction (vendor onboarding step 2)", () => {
       display_name: "Maria",
       preferred_mode: "vendor",
     });
+  });
+});
+
+describe("enrollMfaAction", () => {
+  it("sweeps a stale unverified factor before enrolling a new one", async () => {
+    const client = useSupabase({
+      user,
+      mfaFactors: [
+        { id: "stale-1", factor_type: "totp", status: "unverified" },
+      ],
+    });
+
+    const result = await enrollMfaAction();
+
+    expect(client.auth.mfa.unenroll).toHaveBeenCalledWith({
+      factorId: "stale-1",
+    });
+    expect(client.auth.mfa.enroll).toHaveBeenCalledWith({
+      factorType: "totp",
+    });
+    expect(result.status).toBe("success");
+    expect(result.factorId).toBe("factor-new");
+  });
+
+  it("leaves a verified factor alone", async () => {
+    const client = useSupabase({
+      user,
+      mfaFactors: [{ id: "v-1", factor_type: "totp", status: "verified" }],
+    });
+
+    await enrollMfaAction();
+
+    expect(client.auth.mfa.unenroll).not.toHaveBeenCalled();
+    expect(client.auth.mfa.enroll).toHaveBeenCalled();
+  });
+});
+
+describe("verifyMfaEnrollmentAction", () => {
+  it("rejects a malformed code without calling Supabase", async () => {
+    const client = useSupabase({ user });
+
+    const state = await verifyMfaEnrollmentAction(
+      idleState,
+      form({ code: "abc", factorId: "factor-1" }),
+    );
+
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.code).toBeDefined();
+    expect(client.auth.mfa.challenge).not.toHaveBeenCalled();
+  });
+
+  it("verifies a valid code and redirects to the provided next path", async () => {
+    const client = useSupabase({ user });
+
+    await expect(
+      verifyMfaEnrollmentAction(
+        idleState,
+        form({
+          code: "123456",
+          factorId: "factor-1",
+          next: "/onboarding/vendor",
+        }),
+      ),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor");
+
+    expect(client.auth.mfa.challenge).toHaveBeenCalledWith({
+      factorId: "factor-1",
+    });
+    expect(client.auth.mfa.verify).toHaveBeenCalledWith({
+      factorId: "factor-1",
+      challengeId: "challenge-1",
+      code: "123456",
+    });
+  });
+
+  it("returns a generic mismatch error when Supabase rejects the code", async () => {
+    useSupabase({
+      user,
+      mfaVerifyError: { code: "invalid_code", message: "bad code" },
+    });
+
+    const state = await verifyMfaEnrollmentAction(
+      idleState,
+      form({ code: "123456", factorId: "factor-1" }),
+    );
+
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.code).toBeDefined();
+  });
+});
+
+describe("cancelMfaEnrollmentAction", () => {
+  it("unenrolls a matching unverified factor and redirects to next", async () => {
+    const client = useSupabase({
+      user,
+      mfaFactors: [{ id: "f1", factor_type: "totp", status: "unverified" }],
+    });
+
+    await expect(
+      cancelMfaEnrollmentAction(
+        idleState,
+        form({ factorId: "f1", next: "/onboarding/vendor/profile" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor/profile");
+
+    expect(client.auth.mfa.unenroll).toHaveBeenCalledWith({ factorId: "f1" });
+  });
+
+  it("does not unenroll a factor that is already verified", async () => {
+    const client = useSupabase({
+      user,
+      mfaFactors: [{ id: "f1", factor_type: "totp", status: "verified" }],
+    });
+
+    await expect(
+      cancelMfaEnrollmentAction(idleState, form({ factorId: "f1" })),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor/profile");
+
+    expect(client.auth.mfa.unenroll).not.toHaveBeenCalled();
+  });
+
+  it("still redirects when the unenroll call fails (best-effort cleanup)", async () => {
+    useSupabase({
+      user,
+      mfaFactors: [{ id: "f1", factor_type: "totp", status: "unverified" }],
+      mfaUnenrollError: { code: "server_error", message: "boom" },
+    });
+
+    await expect(
+      cancelMfaEnrollmentAction(idleState, form({ factorId: "f1" })),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor/profile");
+  });
+
+  it("redirects without calling unenroll when no factorId is provided", async () => {
+    const client = useSupabase({ user });
+
+    await expect(
+      cancelMfaEnrollmentAction(idleState, form({})),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor/profile");
+
+    expect(client.auth.mfa.unenroll).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the vendor-profile step for an unsafe next path", async () => {
+    useSupabase({ user });
+
+    await expect(
+      cancelMfaEnrollmentAction(idleState, form({ next: "//evil.com" })),
+    ).rejects.toThrow("REDIRECT:/onboarding/vendor/profile");
+  });
+
+  it("redirects to sign-in when unauthenticated", async () => {
+    useSupabase({ user: null });
+
+    await expect(
+      cancelMfaEnrollmentAction(idleState, form({ factorId: "f1" })),
+    ).rejects.toThrow(/^REDIRECT:\/sign-in/);
   });
 });

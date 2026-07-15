@@ -18,6 +18,18 @@ export type MockUserConfig = {
   profileUpdateError?: { code?: string; message: string } | null;
   /** When true, profile update succeeds but returns no row (missing profile). */
   profileUpdateMissing?: boolean;
+  /** Factors returned by auth.mfa.listFactors(); drives enroll/cancel/verify scenarios. */
+  mfaFactors?: {
+    id: string;
+    factor_type: "totp";
+    status: "verified" | "unverified";
+  }[];
+  /** Force auth.mfa.enroll() to fail with this error. */
+  mfaEnrollError?: { code?: string; message: string } | null;
+  /** Force auth.mfa.verify() to fail with this error. */
+  mfaVerifyError?: { code?: string; message: string } | null;
+  /** Force auth.mfa.unenroll() to fail with this error. */
+  mfaUnenrollError?: { code?: string; message: string } | null;
 };
 
 function thenable(data: unknown) {
@@ -47,6 +59,10 @@ export function createMockSupabase(config: MockUserConfig) {
     nextLevel = "aal1",
     profileUpdateError = null,
     profileUpdateMissing = false,
+    mfaFactors = [],
+    mfaEnrollError = null,
+    mfaVerifyError = null,
+    mfaUnenrollError = null,
   } = config;
 
   type MockError = { code?: string; message: string; status?: number } | null;
@@ -120,9 +136,45 @@ export function createMockSupabase(config: MockUserConfig) {
           error: null,
         })),
         listFactors: vi.fn(async () => ({
-          data: { totp: [], all: [], phone: [] },
+          data: {
+            totp: mfaFactors.filter((f) => f.status === "verified"),
+            all: mfaFactors,
+            phone: [],
+          },
           error: null,
         })),
+        enroll: vi.fn(async (): Promise<{ data: unknown; error: MockError }> =>
+          mfaEnrollError
+            ? { data: null, error: mfaEnrollError }
+            : {
+                data: {
+                  id: "factor-new",
+                  totp: {
+                    qr_code: "data:image/svg+xml;base64,mock",
+                    secret: "MOCKSECRET",
+                    uri: "otpauth://totp/CurbAgora:mock?secret=MOCKSECRET&issuer=CurbAgora",
+                  },
+                },
+                error: null,
+              },
+        ),
+        challenge: vi.fn(
+          async (): Promise<{ data: unknown; error: MockError }> => ({
+            data: { id: "challenge-1" },
+            error: null,
+          }),
+        ),
+        verify: vi.fn(async (): Promise<{ data: unknown; error: MockError }> =>
+          mfaVerifyError
+            ? { data: null, error: mfaVerifyError }
+            : { data: {}, error: null },
+        ),
+        unenroll: vi.fn(
+          async (): Promise<{ data: unknown; error: MockError }> =>
+            mfaUnenrollError
+              ? { data: null, error: mfaUnenrollError }
+              : { data: {}, error: null },
+        ),
       },
       signOut: vi.fn(async () => ({ error: null })),
     },

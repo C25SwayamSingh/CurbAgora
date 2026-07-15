@@ -472,6 +472,9 @@ export type MfaEnrollmentState = ActionState & {
   factorId?: string;
   qrCode?: string;
   secret?: string;
+  /** otpauth:// enrollment URI — lets a supported authenticator app enroll
+   * directly (account name/issuer included) without scanning or typing. */
+  uri?: string;
 };
 
 /** Begin TOTP enrollment; returns the QR code + secret to display. */
@@ -517,6 +520,7 @@ export async function enrollMfaAction(): Promise<MfaEnrollmentState> {
     factorId: data.id,
     qrCode: data.totp.qr_code,
     secret: data.totp.secret,
+    uri: data.totp.uri,
   };
 }
 
@@ -560,6 +564,45 @@ export async function verifyMfaEnrollmentAction(
 
   const rawNext = formData.get("next")?.toString();
   redirect(rawNext ? safeNextPath(rawNext) : "/account/security?mfa=enrolled");
+}
+
+/**
+ * Cancel an in-progress (unverified) TOTP enrollment during onboarding.
+ * Runs at aal1 by design — the user hasn't verified anything yet, so this
+ * cannot reuse `unenrollMfaAction`'s aal2 gate. Only ever removes a factor
+ * that is still `unverified`; a factor already verified (e.g. from another
+ * tab) is left untouched. Cleanup is best-effort: `enrollMfaAction` already
+ * sweeps stale unverified factors on the next attempt regardless.
+ */
+export async function cancelMfaEnrollmentAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAuth();
+
+  const factorId = formData.get("factorId")?.toString();
+
+  if (factorId) {
+    const supabase = await createServerClient();
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    const factor = factors?.all.find((f) => f.id === factorId);
+
+    if (factor && factor.status === "unverified") {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId });
+      if (error) {
+        console.error("MFA cancel unenroll failed", { code: error.code });
+      }
+    } else if (factor) {
+      console.warn("MFA cancel skipped: factor no longer unverified");
+    }
+  }
+
+  redirect(
+    safeNextPath(
+      formData.get("next")?.toString(),
+      "/onboarding/vendor/profile",
+    ),
+  );
 }
 
 /** Verify a TOTP code at sign-in to upgrade the session to aal2. */

@@ -175,8 +175,16 @@ claim, which only the TOTP challenge/verify APIs can ever set to `aal2`.
   also requires aal2, so any other policy using that function (profiles,
   organizations, organization_members reads) also stops recognizing an
   unverified admin session, independent of the app layer.
-- Unenrollment requires an aal2 session.
-- Recovery: users are advised to keep the manual TOTP secret as a backup; an
+- Unenrollment of a **verified** factor (self-service, `/account/security`)
+  requires an aal2 session. Cancelling an **in-progress, unverified**
+  enrollment during vendor onboarding is a separate, narrower action that
+  runs at aal1 by design (the user hasn't verified anything yet to prove
+  aal2 with) and can only ever remove a factor still in `unverified` status
+  — it never touches a verified factor.
+- Recovery: the manual TOTP secret is shown only on demand (hidden by
+  default) during enrollment and is never logged or persisted outside the
+  Supabase enrollment response; account-recovery options are surfaced via
+  Security settings rather than advising users to retain the raw secret. An
   admin-assisted factor reset is future work (service-role tooling).
 
 ### Independent, defense-in-depth enforcement

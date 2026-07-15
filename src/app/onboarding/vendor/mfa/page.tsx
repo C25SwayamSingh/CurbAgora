@@ -62,7 +62,10 @@ export default async function VendorMfaOnboardingPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {!ctx.mfaEnrolled ? (
-              <MfaEnrollment nextPath={NEXT_STEP} />
+              <MfaEnrollment
+                nextPath={NEXT_STEP}
+                backPath="/onboarding/vendor/profile"
+              />
             ) : (
               <div className="space-y-4">
                 <Alert>
