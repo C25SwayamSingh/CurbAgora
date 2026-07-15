@@ -175,7 +175,7 @@ configuration are in place, is:
   verification step (Supabase phone auth), independent of TOTP MFA.
 - **Vendor phone verification before public business activation** — a new
   gate, analogous to today's Gate A/Gate B split: an organization can be
-  *created* without a verified phone (unchanged), but should require one
+  _created_ without a verified phone (unchanged), but should require one
   before the listing is publicly discoverable (a new, narrower guard —
   not a reversion to a mandatory-before-creation model).
 - **TOTP step-up for sensitive vendor actions** — extends the existing

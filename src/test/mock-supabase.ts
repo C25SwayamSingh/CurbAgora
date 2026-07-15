@@ -3,6 +3,7 @@ import { vi } from "vitest";
 import type {
   OrganizationMember,
   Profile,
+  VendorUnit,
 } from "@/lib/supabase/database.types";
 
 export type MockUserConfig = {
@@ -30,6 +31,16 @@ export type MockUserConfig = {
   mfaVerifyError?: { code?: string; message: string } | null;
   /** Force auth.mfa.unenroll() to fail with this error. */
   mfaUnenrollError?: { code?: string; message: string } | null;
+  /** Row returned by a single-row vendor_units select (.maybeSingle()); null = none exists. */
+  vendorUnit?: Partial<VendorUnit> | null;
+  /** Rows returned by a list-shaped vendor_units select (no .maybeSingle()). */
+  vendorUnits?: Partial<VendorUnit>[];
+  /** Force vendor_units insert to fail with this error. */
+  vendorUnitInsertError?: { code?: string; message: string } | null;
+  /** Force vendor_units update to fail with this error. */
+  vendorUnitUpdateError?: { code?: string; message: string } | null;
+  /** When true, vendor_units update succeeds but matches no row. */
+  vendorUnitUpdateMissing?: boolean;
 };
 
 function thenable(data: unknown) {
@@ -63,6 +74,11 @@ export function createMockSupabase(config: MockUserConfig) {
     mfaEnrollError = null,
     mfaVerifyError = null,
     mfaUnenrollError = null,
+    vendorUnit = null,
+    vendorUnits = [],
+    vendorUnitInsertError = null,
+    vendorUnitUpdateError = null,
+    vendorUnitUpdateMissing = false,
   } = config;
 
   type MockError = { code?: string; message: string; status?: number } | null;
@@ -94,6 +110,34 @@ export function createMockSupabase(config: MockUserConfig) {
       select: () => builder,
       maybeSingle: async () => updateResult,
       then: (resolve: (value: { data: unknown; error: MockError }) => void) =>
+        resolve(updateResult),
+    };
+    return builder;
+  });
+
+  const vendorUnitInsertPayloads: unknown[] = [];
+  const vendorUnitInsert = vi.fn((payload: unknown) => {
+    vendorUnitInsertPayloads.push(payload);
+    const result = { error: vendorUnitInsertError };
+    return {
+      then: (resolve: (value: typeof result) => void) => resolve(result),
+    };
+  });
+
+  const vendorUnitUpdatePayloads: unknown[] = [];
+  const vendorUnitUpdate = vi.fn((payload: unknown) => {
+    vendorUnitUpdatePayloads.push(payload);
+    const updateResult = vendorUnitUpdateError
+      ? { data: null, error: vendorUnitUpdateError }
+      : vendorUnitUpdateMissing
+        ? { data: null, error: null }
+        : { data: { id: vendorUnit?.id ?? "unit-1" }, error: null };
+
+    const builder = {
+      eq: () => builder,
+      select: () => builder,
+      maybeSingle: async () => updateResult,
+      then: (resolve: (value: typeof updateResult) => void) =>
         resolve(updateResult),
     };
     return builder;
@@ -180,6 +224,8 @@ export function createMockSupabase(config: MockUserConfig) {
     },
     rpc,
     update,
+    vendorUnitInsert,
+    vendorUnitUpdate,
     from: vi.fn((table: string) => {
       if (table === "profiles") {
         const builder = {
@@ -193,6 +239,24 @@ export function createMockSupabase(config: MockUserConfig) {
       }
       if (table === "platform_admins") {
         return thenable(isPlatformAdmin ? { user_id: user?.id } : null);
+      }
+      if (table === "vendor_units" || table === "vendor_unit_previews") {
+        // .maybeSingle() resolves the single-row config; a plain awaited
+        // list query (no .maybeSingle()) resolves the array config — a
+        // real query only ever uses one or the other, matching how the
+        // dashboard (list) vs. edit-page/idempotency-check (single)
+        // queries are actually shaped.
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          order: () => builder,
+          maybeSingle: async () => ({ data: vendorUnit, error: null }),
+          then: (resolve: (value: { data: unknown; error: null }) => void) =>
+            resolve({ data: vendorUnits, error: null }),
+          insert: vendorUnitInsert,
+          update: vendorUnitUpdate,
+        };
+        return builder;
       }
       return thenable(null);
     }),

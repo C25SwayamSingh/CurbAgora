@@ -1,8 +1,9 @@
 /**
- * Database types for the Phase 2 auth/tenancy schema.
+ * Database types for the Phase 2 auth/tenancy schema plus vendor_units.
  *
  * Maintained by hand to mirror
- * `supabase/migrations/20260701000000_auth_tenancy_foundation.sql`.
+ * `supabase/migrations/20260701000000_auth_tenancy_foundation.sql` and
+ * `supabase/migrations/20260706000000_vendor_units.sql`.
  * When a local Supabase stack is available, regenerate with:
  *
  *   supabase gen types typescript --local > src/lib/supabase/database.types.ts
@@ -17,6 +18,23 @@ export type OnboardingStatus = "not_started" | "in_progress" | "complete";
 export type OrganizationStatus = "active" | "suspended" | "archived";
 export type OrganizationRole = "owner" | "manager" | "staff";
 export type MembershipStatus = "invited" | "active" | "revoked";
+export type VendorUnitType =
+  "food_cart" | "food_truck" | "stand" | "stall" | "pop_up";
+export type VendorOperatingStatus = "open" | "closed" | "temporarily_closed";
+export type CuisineCategory =
+  | "american"
+  | "mexican"
+  | "asian"
+  | "italian"
+  | "mediterranean"
+  | "indian"
+  | "bbq"
+  | "desserts"
+  | "coffee_and_drinks"
+  | "vegan_vegetarian"
+  | "other";
+export type PaymentMethod =
+  "cash" | "credit_card" | "debit_card" | "mobile_pay" | "contactless";
 
 export type Json =
   | string
@@ -150,8 +168,91 @@ export type Database = {
         };
         Relationships: [];
       };
+      vendor_units: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          slug: string;
+          unit_type: VendorUnitType;
+          description: string;
+          cuisine_categories: CuisineCategory[];
+          city: string;
+          contact_phone: string | null;
+          contact_phone_visible: boolean;
+          contact_email: string | null;
+          contact_email_visible: boolean;
+          payment_methods: PaymentMethod[];
+          operating_status: VendorOperatingStatus;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          name: string;
+          slug: string;
+          unit_type: VendorUnitType;
+          description?: string;
+          cuisine_categories?: CuisineCategory[];
+          city: string;
+          contact_phone?: string | null;
+          contact_phone_visible?: boolean;
+          contact_email?: string | null;
+          contact_email_visible?: boolean;
+          payment_methods?: PaymentMethod[];
+          operating_status?: VendorOperatingStatus;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          name?: string;
+          slug?: string;
+          unit_type?: VendorUnitType;
+          description?: string;
+          cuisine_categories?: CuisineCategory[];
+          city?: string;
+          contact_phone?: string | null;
+          contact_phone_visible?: boolean;
+          contact_email?: string | null;
+          contact_email_visible?: boolean;
+          payment_methods?: PaymentMethod[];
+          operating_status?: VendorOperatingStatus;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      vendor_unit_previews: {
+        Row: {
+          id: string;
+          organization_id: string;
+          organization_slug: string;
+          slug: string;
+          name: string;
+          unit_type: VendorUnitType;
+          description: string;
+          cuisine_categories: CuisineCategory[];
+          city: string;
+          payment_methods: PaymentMethod[];
+          operating_status: VendorOperatingStatus;
+          /** Null unless the owner/manager set contact_phone_visible. */
+          contact_phone: string | null;
+          /** Null unless the owner/manager set contact_email_visible. */
+          contact_email: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       create_organization_with_owner: {
         Args: {
@@ -185,6 +286,10 @@ export type Database = {
       organization_status: OrganizationStatus;
       organization_role: OrganizationRole;
       membership_status: MembershipStatus;
+      vendor_unit_type: VendorUnitType;
+      vendor_operating_status: VendorOperatingStatus;
+      cuisine_category: CuisineCategory;
+      payment_method: PaymentMethod;
     };
     CompositeTypes: Record<string, never>;
   };
@@ -196,3 +301,6 @@ export type OrganizationMember =
   Database["public"]["Tables"]["organization_members"]["Row"];
 export type PlatformAdmin =
   Database["public"]["Tables"]["platform_admins"]["Row"];
+export type VendorUnit = Database["public"]["Tables"]["vendor_units"]["Row"];
+export type VendorUnitPreview =
+  Database["public"]["Views"]["vendor_unit_previews"]["Row"];

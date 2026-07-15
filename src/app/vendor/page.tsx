@@ -15,6 +15,7 @@ import {
 import { pageTitle } from "@/lib/app-config";
 import { isMfaMandatoryRole, requireVendorDashboard } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
+import { VendorUnitsSection } from "@/features/vendors/components/vendor-units-section";
 
 export const metadata: Metadata = { title: pageTitle("Vendor dashboard") };
 
@@ -23,20 +24,28 @@ export default async function VendorDashboardPage() {
 
   const supabase = await createServerClient();
 
-  const [{ data: organization }, { data: members }] = await Promise.all([
-    supabase
-      .from("organizations")
-      .select("*")
-      .eq("id", ctx.membership.organization_id)
-      .maybeSingle(),
-    supabase
-      .from("organization_members")
-      .select("*")
-      .eq("organization_id", ctx.membership.organization_id)
-      .order("created_at"),
-  ]);
+  const [{ data: organization }, { data: members }, { data: vendorUnits }] =
+    await Promise.all([
+      supabase
+        .from("organizations")
+        .select("*")
+        .eq("id", ctx.membership.organization_id)
+        .maybeSingle(),
+      supabase
+        .from("organization_members")
+        .select("*")
+        .eq("organization_id", ctx.membership.organization_id)
+        .order("created_at"),
+      supabase
+        .from("vendor_units")
+        .select("*")
+        .eq("organization_id", ctx.membership.organization_id)
+        .order("created_at"),
+    ]);
 
   const isLeadership = isMfaMandatoryRole(ctx.membership.role);
+  const canManageUnit =
+    ctx.membership.role === "owner" || ctx.membership.role === "manager";
 
   return (
     <AuthenticatedAppShell>
@@ -156,6 +165,14 @@ export default async function VendorDashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        {organization ? (
+          <VendorUnitsSection
+            units={vendorUnits ?? []}
+            organizationSlug={organization.slug}
+            canManage={canManageUnit}
+          />
+        ) : null}
 
         <Card>
           <CardHeader>
