@@ -4,14 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const enrollMfaActionMock = vi.fn();
 const verifyMfaEnrollmentActionMock = vi.fn();
-const cancelMfaEnrollmentActionMock = vi.fn();
 
 vi.mock("@/features/authentication/actions", () => ({
   enrollMfaAction: (...args: unknown[]) => enrollMfaActionMock(...args),
   verifyMfaEnrollmentAction: (...args: unknown[]) =>
     verifyMfaEnrollmentActionMock(...args),
-  cancelMfaEnrollmentAction: (...args: unknown[]) =>
-    cancelMfaEnrollmentActionMock(...args),
 }));
 
 import { MfaEnrollment } from "@/features/authentication/components/mfa-enrollment";
@@ -30,11 +27,11 @@ function successfulEnrollment() {
   };
 }
 
-async function renderEnrolled(backPath?: string) {
+async function renderEnrolled() {
   enrollMfaActionMock.mockResolvedValueOnce(successfulEnrollment());
   verifyMfaEnrollmentActionMock.mockResolvedValue({ status: "idle" });
   const user = userEvent.setup();
-  render(<MfaEnrollment nextPath="/onboarding/vendor" backPath={backPath} />);
+  render(<MfaEnrollment nextPath="/onboarding/vendor" />);
   await user.click(
     screen.getByRole("button", { name: /set up authenticator app/i }),
   );
@@ -45,7 +42,6 @@ async function renderEnrolled(backPath?: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   verifyMfaEnrollmentActionMock.mockResolvedValue({ status: "idle" });
-  cancelMfaEnrollmentActionMock.mockResolvedValue({ status: "idle" });
 });
 
 /**
@@ -62,62 +58,6 @@ function stubClipboardWriteText() {
   });
   return writeText;
 }
-
-describe("MfaEnrollment — Back navigation", () => {
-  it("renders a Back link before enrollment starts when backPath is set", () => {
-    render(
-      <MfaEnrollment
-        nextPath="/onboarding/vendor"
-        backPath="/onboarding/vendor/profile"
-      />,
-    );
-
-    expect(screen.getByRole("link", { name: /back/i })).toHaveAttribute(
-      "href",
-      "/onboarding/vendor/profile",
-    );
-  });
-
-  it("renders no Back UI when backPath is omitted", async () => {
-    await renderEnrolled();
-
-    expect(
-      screen.queryByRole("link", { name: /back/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /^back$/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("cancels the pending enrollment and disables the button while pending", async () => {
-    let resolveCancel!: (value: { status: "idle" }) => void;
-    cancelMfaEnrollmentActionMock.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveCancel = resolve;
-        }),
-    );
-
-    const user = await renderEnrolled("/onboarding/vendor/profile");
-    const backButton = screen.getByRole("button", { name: /^back$/i });
-    await user.click(backButton);
-
-    expect(cancelMfaEnrollmentActionMock).toHaveBeenCalledTimes(1);
-    const [, formData] = cancelMfaEnrollmentActionMock.mock.calls[0] as [
-      unknown,
-      FormData,
-    ];
-    expect(formData.get("factorId")).toBe("factor-1");
-    expect(formData.get("next")).toBe("/onboarding/vendor/profile");
-    expect(screen.getByRole("button", { name: /going back/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /going back/i })).toHaveAttribute(
-      "aria-busy",
-      "true",
-    );
-
-    resolveCancel({ status: "idle" });
-  });
-});
 
 describe("MfaEnrollment — setup key disclosure", () => {
   it("hides the secret by default and reveals it on toggle", async () => {
@@ -173,22 +113,6 @@ describe("MfaEnrollment — copy to clipboard", () => {
 });
 
 describe("MfaEnrollment — copy strings", () => {
-  it("states the next step in vendor onboarding (backPath set)", async () => {
-    await renderEnrolled("/onboarding/vendor/profile");
-
-    expect(
-      screen.getByText(/next step: creating your business organization/i),
-    ).toBeInTheDocument();
-  });
-
-  it("omits the vendor next-step line outside onboarding (no backPath)", async () => {
-    await renderEnrolled();
-
-    expect(
-      screen.queryByText(/next step: creating your business organization/i),
-    ).not.toBeInTheDocument();
-  });
-
   it("always shows the Security-settings recovery line and drops the old backup-secret advice", async () => {
     await renderEnrolled();
 
@@ -199,32 +123,6 @@ describe("MfaEnrollment — copy strings", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/store the manual key somewhere safe as a backup/i),
-    ).not.toBeInTheDocument();
-  });
-});
-
-describe("MfaEnrollment — vendor vs. customer explanation copy", () => {
-  it("explains business/team risk for vendor onboarding (backPath set)", () => {
-    render(
-      <MfaEnrollment
-        nextPath="/onboarding/vendor"
-        backPath="/onboarding/vendor/profile"
-      />,
-    );
-
-    expect(
-      screen.getByText(/control your team's access and your business's data/i),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps the generic explanation for customer/self-service MFA (no backPath)", () => {
-    render(<MfaEnrollment />);
-
-    expect(
-      screen.getByText(/second step when you sign in/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/control your team's access/i),
     ).not.toBeInTheDocument();
   });
 });

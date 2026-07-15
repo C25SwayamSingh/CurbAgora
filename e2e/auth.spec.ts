@@ -13,7 +13,6 @@ test.describe("route protection (unauthenticated)", () => {
     "/onboarding/customer",
     "/onboarding/vendor",
     "/onboarding/vendor/profile",
-    "/onboarding/vendor/mfa",
     "/account",
     "/account/security",
     "/customer",

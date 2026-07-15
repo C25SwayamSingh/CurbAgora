@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { enforceMfaVerified, requireAuth } from "@/lib/auth/guards";
+import { requireAuth } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   errorState,
@@ -11,20 +11,17 @@ import {
 } from "@/features/authentication/action-state";
 import { createOrganizationSchema } from "@/features/organizations/schemas";
 
-const ORG_CREATION_PATH = "/onboarding/vendor";
-
 /**
  * Vendor onboarding: create the organization and its initial owner
  * membership. Delegates to the create_organization_with_owner database
  * function, which runs both inserts in one transaction (no ownerless org)
- * and re-validates the caller's vendor status server-side — the client
- * supplies only the org names/slug, never roles or IDs.
+ * — the client supplies only the org names/slug, never roles or IDs.
  *
- * Creating an organization is a sensitive operation with mandatory MFA:
- * this action independently re-verifies an aal2 session immediately before
- * calling the database (never trusting the page-level redirect alone), and
- * the database function independently rejects the call again if the JWT is
- * not aal2 — three enforcement layers total.
+ * Creating an organization requires only an authenticated, confirmed-email
+ * session — MFA is not a precondition. Sensitive management actions
+ * afterward (updating org settings, inviting/removing members, changing
+ * roles) remain mandatory-MFA via `requireVendorSensitiveAction` and the
+ * database's restrictive `mfa_assurance_ok()` policies.
  */
 export async function createOrganizationAction(
   _prev: ActionState,
@@ -37,9 +34,6 @@ export async function createOrganizationAction(
   if (ctx.memberships.some((m) => m.role === "owner")) {
     redirect("/vendor");
   }
-
-  // Independent server-side AAL2 re-verification (mandatory for owners).
-  enforceMfaVerified(ctx, ORG_CREATION_PATH);
 
   const parsed = createOrganizationSchema.safeParse({
     legalName: formData.get("legalName"),

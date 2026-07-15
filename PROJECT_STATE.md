@@ -11,8 +11,10 @@ Phase 2 is complete, verified, and hardened. The app has full authentication
 customer/vendor dual-mode onboarding on one account, interface mode switching,
 vendor organizations with role-based
 memberships, a platform-admin foundation, TOTP MFA, database-level tenant
-isolation (RLS default-deny on every table), and **mandatory MFA (aal2) for
-organization owners/managers and platform administrators** — enforced
+isolation (RLS default-deny on every table). MFA is **optional** for
+organization creation and dashboard access (a dashboard suggestion links
+owners/managers to set it up) and **mandatory** for sensitive org/member
+management actions and for platform administrators (always) — enforced
 independently in the server guards, the sensitive server actions, and the
 database.
 
@@ -23,8 +25,9 @@ database.
   Supabase stack is running)
 - Onboarding: **“What would you like to do first?”** (Discover vendors vs Set up
   vendor business); sets `preferred_mode` (UI only, not permanent); customer
-  profile completion; vendor sequence profile → mandatory MFA → atomic org
-  creation → dashboard; **Become a vendor** later on the same account
+  profile completion; vendor sequence profile → atomic org creation →
+  dashboard (MFA optional, suggested from the dashboard afterward);
+  **Become a vendor** later on the same account
 - Header **mode switch** (Customer / Vendor / Become a vendor); vendor routes
   still require active `organization_members`
 - Simplified **Account** (initials avatar, read-only email, preferred mode, org
@@ -34,11 +37,11 @@ database.
   `/account/security`, `/customer`, `/vendor`, `/admin`, `/mfa-enroll`,
   `/mfa-challenge`
 - TOTP MFA: enroll, sign-in challenge, verify, unenroll; "sign out other
-  sessions". MFA is **optional** for customers/staff and **mandatory** for
-  organization owners/managers (before creating/managing an org, and before
-  reaching `/vendor` at all) and for platform admins (always) — with no
-  custom, client-writable MFA flag; every check reads Supabase Auth's own
-  `aal` JWT claim.
+  sessions". MFA is **optional** for customers/staff, **optional** for
+  organization owners/managers to create an org or use the dashboard, and
+  **mandatory** for owners/managers performing sensitive management actions
+  and for platform admins (always) — with no custom, client-writable MFA
+  flag; every check reads Supabase Auth's own `aal` JWT claim.
 - Role model: customer, vendor staff/manager/owner, platform admin
   (dedicated table, writable only via migrations/service role)
 - Versioned Supabase migrations (`profiles`/`organizations`/
@@ -156,6 +159,38 @@ npm run db:types     # Regenerate src/lib/supabase/database.types.ts
    `requireVendorSensitiveAction()` guard ready)
 2. Public vendor profile pages
 3. Admin user/org management tooling (service-role backed, outside client app)
+
+### Next authentication task: layered verification (not started)
+
+Current auth surface (`src/lib/auth/guards.ts`, `src/features/authentication/actions.ts`,
+`src/features/authentication/components/*`) covers password + TOTP only —
+no phone/SMS channel exists anywhere in the codebase yet. The next
+authentication increment, once a production SMS provider and SMTP
+configuration are in place, is:
+
+- **Email OTP as an optional login method** — an alternative to password
+  sign-in, using Supabase's existing email-OTP support; additive to, not a
+  replacement for, the current password flow.
+- **Phone OTP for verified phone ownership** — a new `phone` capture +
+  verification step (Supabase phone auth), independent of TOTP MFA.
+- **Vendor phone verification before public business activation** — a new
+  gate, analogous to today's Gate A/Gate B split: an organization can be
+  *created* without a verified phone (unchanged), but should require one
+  before the listing is publicly discoverable (a new, narrower guard —
+  not a reversion to a mandatory-before-creation model).
+- **TOTP step-up for sensitive vendor actions** — extends the existing
+  `requireVendorSensitiveAction()` / `mfa_assurance_ok()` pattern (already
+  built, currently unused pending a real settings/member-management UI) to
+  cover the same actions once that UI ships; no new enforcement design
+  needed, just real call sites.
+- **Requires a production SMS provider and SMTP configuration** — local dev
+  currently relies on Mailpit for email only; phone OTP has no local-dev
+  equivalent today and cannot be built against the current Supabase config.
+- **No client-editable `phone_verified` or MFA flags** — must follow the
+  existing pattern exactly: every check reads Supabase Auth's own state
+  (`auth.jwt() ->> 'aal'`, verified phone/factor status) via
+  `getAuthContext()`/RLS helper functions, never a custom boolean column a
+  client request could set directly.
 
 ## Assumptions
 

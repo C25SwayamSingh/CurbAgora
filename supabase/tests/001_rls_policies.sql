@@ -131,22 +131,28 @@ select throws_ok(
 );
 
 -- ----------------------------------------------------------------------------
--- Mandatory MFA: organization creation (initial owner bootstrap)
+-- Organization creation (initial owner bootstrap) — MFA optional
 -- ----------------------------------------------------------------------------
 
--- AAL1 vendor: enrolled or not, a plain password-only session can never
--- create an organization. This is the "initial org creation cannot bypass
--- the MFA requirement" case — create_organization_with_owner is SECURITY
--- DEFINER (bypasses RLS entirely), so this must be an explicit in-function
--- check, not a policy.
+-- AAL1 owner: organization creation requires only an authenticated session,
+-- not MFA. create_organization_with_owner is SECURITY DEFINER (bypasses RLS
+-- entirely), so this is proven directly against the function, not a policy.
+-- Sensitive org/membership writes after creation remain aal2-gated by the
+-- restrictive policies exercised later in this file — this migration only
+-- widens who may create the initial organization.
 select test_as_user('00000000-0000-0000-0000-000000000001', 'aal1');
 
-select throws_ok(
-  $$ select public.create_organization_with_owner('Taco Cart LLC', 'Taco Cart', 'taco-cart') $$,
-  '42501',
-  null,
-  'AAL1 vendor cannot create an organization (MFA required, no bypass)'
+select lives_ok(
+  $$ select public.create_organization_with_owner('Taco Cart LLC (AAL1)', 'Taco Cart AAL1', 'taco-cart-aal1') $$,
+  'AAL1 owner can create an organization (MFA no longer required for creation)'
 );
+
+-- Clean up: every downstream assertion in this file assumes user 1 owns
+-- exactly one organization ('taco-cart'), created below. Remove the proof
+-- org via the service role (bypasses RLS; cascades to its membership row)
+-- so that invariant holds for the rest of the suite.
+select test_as_service();
+delete from public.organizations where slug = 'taco-cart-aal1';
 
 select test_as_user('00000000-0000-0000-0000-000000000001', 'aal2');
 

@@ -21,7 +21,6 @@ export const metadata: Metadata = { title: pageTitle("Your profile") };
 const VENDOR_ONBOARDING_STEPS = [
   "Get started",
   "Your details",
-  "Two-factor setup",
   "Your organization",
 ];
 
@@ -33,7 +32,7 @@ export default async function VendorProfilePage() {
   }
 
   if (ctx.profile?.display_name?.trim()) {
-    redirect("/onboarding/vendor/mfa");
+    redirect("/onboarding/vendor");
   }
 
   return (

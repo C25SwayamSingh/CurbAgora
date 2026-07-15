@@ -382,8 +382,8 @@ export async function setPreferredModeAction(
 
 /**
  * Step 2 of the vendor onboarding sequence: complete the personal profile
- * before MFA enrollment and organization creation. Does not mark onboarding
- * complete — that happens once the organization is created.
+ * before organization creation. Does not mark onboarding complete — that
+ * happens once the organization is created.
  */
 export async function completeVendorProfileAction(
   _prev: ActionState,
@@ -416,7 +416,7 @@ export async function completeVendorProfileAction(
     return errorState(GENERIC_AUTH_ERROR);
   }
 
-  redirect("/onboarding/vendor/mfa");
+  redirect("/onboarding/vendor");
 }
 
 /** Complete customer onboarding: save profile, mark complete. */
@@ -564,45 +564,6 @@ export async function verifyMfaEnrollmentAction(
 
   const rawNext = formData.get("next")?.toString();
   redirect(rawNext ? safeNextPath(rawNext) : "/account/security?mfa=enrolled");
-}
-
-/**
- * Cancel an in-progress (unverified) TOTP enrollment during onboarding.
- * Runs at aal1 by design — the user hasn't verified anything yet, so this
- * cannot reuse `unenrollMfaAction`'s aal2 gate. Only ever removes a factor
- * that is still `unverified`; a factor already verified (e.g. from another
- * tab) is left untouched. Cleanup is best-effort: `enrollMfaAction` already
- * sweeps stale unverified factors on the next attempt regardless.
- */
-export async function cancelMfaEnrollmentAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  await requireAuth();
-
-  const factorId = formData.get("factorId")?.toString();
-
-  if (factorId) {
-    const supabase = await createServerClient();
-    const { data: factors } = await supabase.auth.mfa.listFactors();
-    const factor = factors?.all.find((f) => f.id === factorId);
-
-    if (factor && factor.status === "unverified") {
-      const { error } = await supabase.auth.mfa.unenroll({ factorId });
-      if (error) {
-        console.error("MFA cancel unenroll failed", { code: error.code });
-      }
-    } else if (factor) {
-      console.warn("MFA cancel skipped: factor no longer unverified");
-    }
-  }
-
-  redirect(
-    safeNextPath(
-      formData.get("next")?.toString(),
-      "/onboarding/vendor/profile",
-    ),
-  );
 }
 
 /** Verify a TOTP code at sign-in to upgrade the session to aal2. */

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldCheck, Users } from "lucide-react";
+import { Shield, ShieldCheck, Users } from "lucide-react";
 
 import { AuthenticatedAppShell } from "@/components/app/authenticated-app-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -51,13 +51,27 @@ export default async function VendorDashboardPage() {
           </p>
         </div>
 
-        {isLeadership ? (
+        {isLeadership && ctx.aal !== "aal2" ? (
+          <Alert variant="default">
+            <Shield aria-hidden="true" />
+            <AlertDescription>
+              Add two-factor authentication to better protect your business
+              account.{" "}
+              <Link
+                href="/account/security"
+                className="font-medium underline underline-offset-2"
+              >
+                Set it up
+              </Link>
+            </AlertDescription>
+          </Alert>
+        ) : isLeadership && ctx.aal === "aal2" ? (
           <Alert variant="success">
             <ShieldCheck aria-hidden="true" />
             <AlertDescription>
-              Two-factor authentication is verified for this session — required
-              for {ctx.membership.role === "owner" ? "owners" : "managers"} to
-              manage this organization.
+              Two-factor authentication is verified for this session — helps
+              protect {ctx.membership.role === "owner" ? "owners" : "managers"}{" "}
+              managing this organization.
             </AlertDescription>
           </Alert>
         ) : null}

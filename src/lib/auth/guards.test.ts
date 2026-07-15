@@ -220,27 +220,23 @@ describe("MFA assurance", () => {
   });
 });
 
-describe("mandatory MFA for organization owners/managers", () => {
+describe("organization creation and dashboard access (MFA optional)", () => {
   describe("requireVendorForOrgCreation", () => {
-    it("sends a vendor with no enrolled factor to MFA enrollment (not the challenge)", async () => {
+    it("passes for a vendor with no MFA factor at all", async () => {
       useSupabase({ user: baseUser, profile: vendorProfile });
-      await expectRedirect(
-        requireVendorForOrgCreation("/onboarding/vendor"),
-        "/mfa-enroll?next=%2Fonboarding%2Fvendor",
-      );
+      const ctx = await requireVendorForOrgCreation();
+      expect(ctx.aal).toBe("aal1");
     });
 
-    it("sends an enrolled-but-unverified vendor to the MFA challenge", async () => {
+    it("passes for an enrolled-but-unverified-this-session vendor", async () => {
       useSupabase({
         user: baseUser,
         profile: vendorProfile,
         currentLevel: "aal1",
         nextLevel: "aal2",
       });
-      await expectRedirect(
-        requireVendorForOrgCreation("/onboarding/vendor"),
-        "/mfa-challenge?next=%2Fonboarding%2Fvendor",
-      );
+      const ctx = await requireVendorForOrgCreation();
+      expect(ctx.aal).toBe("aal1");
     });
 
     it("passes for a fully MFA-verified vendor", async () => {
@@ -254,81 +250,32 @@ describe("mandatory MFA for organization owners/managers", () => {
       expect(ctx.aal).toBe("aal2");
     });
 
-    it("allows any onboarded user with MFA to create an organization", async () => {
-      useSupabase({
-        user: baseUser,
-        profile: customerProfile,
-        currentLevel: "aal2",
-        nextLevel: "aal2",
-      });
+    it("allows any onboarded user to create an organization", async () => {
+      useSupabase({ user: baseUser, profile: customerProfile });
       const ctx = await requireVendorForOrgCreation();
-      expect(ctx.aal).toBe("aal2");
-    });
-  });
-
-  describe("requireVendorSensitiveAction", () => {
-    it("owner with no enrolled factor is sent to MFA enrollment", async () => {
-      useSupabase({
-        user: baseUser,
-        profile: vendorProfile,
-        memberships: [membership("owner")],
-      });
-      await expectRedirect(
-        requireVendorSensitiveAction(["owner"], "/vendor/settings"),
-        "/mfa-enroll?next=%2Fvendor%2Fsettings",
-      );
-    });
-
-    it("owner enrolled but at aal1 is sent to the MFA challenge", async () => {
-      useSupabase({
-        user: baseUser,
-        profile: vendorProfile,
-        memberships: [membership("owner")],
-        currentLevel: "aal1",
-        nextLevel: "aal2",
-      });
-      await expectRedirect(
-        requireVendorSensitiveAction(["owner"], "/vendor/settings"),
-        "/mfa-challenge?next=%2Fvendor%2Fsettings",
-      );
-    });
-
-    it("owner at aal2 passes", async () => {
-      useSupabase({
-        user: baseUser,
-        profile: vendorProfile,
-        memberships: [membership("owner")],
-        currentLevel: "aal2",
-        nextLevel: "aal2",
-      });
-      const ctx = await requireVendorSensitiveAction(["owner"]);
-      expect(ctx.membership.role).toBe("owner");
+      expect(ctx.user).toBeTruthy();
     });
   });
 
   describe("requireVendorDashboard", () => {
-    it("owner without MFA cannot reach the dashboard", async () => {
+    it("owner without MFA can still reach the dashboard (MFA optional)", async () => {
       useSupabase({
         user: baseUser,
         profile: vendorProfile,
         memberships: [membership("owner")],
       });
-      await expectRedirect(
-        requireVendorDashboard(),
-        "/mfa-enroll?next=%2Fvendor",
-      );
+      const ctx = await requireVendorDashboard();
+      expect(ctx.membership.role).toBe("owner");
     });
 
-    it("manager without MFA cannot reach the dashboard", async () => {
+    it("manager without MFA can still reach the dashboard (MFA optional)", async () => {
       useSupabase({
         user: baseUser,
         profile: vendorProfile,
         memberships: [membership("manager")],
       });
-      await expectRedirect(
-        requireVendorDashboard(),
-        "/mfa-enroll?next=%2Fvendor",
-      );
+      const ctx = await requireVendorDashboard();
+      expect(ctx.membership.role).toBe("manager");
     });
 
     it("staff without MFA can still reach the dashboard (MFA optional)", async () => {
@@ -355,10 +302,10 @@ describe("mandatory MFA for organization owners/managers", () => {
   });
 
   describe("resolveVendorOnboardingPath", () => {
-    it("sends a vendor with no organization and no aal2 session to the MFA step", async () => {
+    it("sends a vendor with no organization and no aal2 session straight to organization creation", async () => {
       useSupabase({ user: baseUser, profile: vendorProfile, memberships: [] });
       const ctx = await getAuthContext();
-      expect(resolveVendorOnboardingPath(ctx!)).toBe("/onboarding/vendor/mfa");
+      expect(resolveVendorOnboardingPath(ctx!)).toBe("/onboarding/vendor");
     });
 
     it("sends a fully verified vendor with no organization to organization creation", async () => {
@@ -382,6 +329,48 @@ describe("mandatory MFA for organization owners/managers", () => {
       const ctx = await getAuthContext();
       expect(resolveVendorOnboardingPath(ctx!)).toBe("/vendor");
     });
+  });
+});
+
+// Gate B — sensitive org/membership management writes remain mandatory-MFA,
+// unaffected by org creation / dashboard access becoming MFA-optional above.
+describe("requireVendorSensitiveAction (mandatory MFA)", () => {
+  it("owner with no enrolled factor is sent to MFA enrollment", async () => {
+    useSupabase({
+      user: baseUser,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+    });
+    await expectRedirect(
+      requireVendorSensitiveAction(["owner"], "/vendor/settings"),
+      "/mfa-enroll?next=%2Fvendor%2Fsettings",
+    );
+  });
+
+  it("owner enrolled but at aal1 is sent to the MFA challenge", async () => {
+    useSupabase({
+      user: baseUser,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      currentLevel: "aal1",
+      nextLevel: "aal2",
+    });
+    await expectRedirect(
+      requireVendorSensitiveAction(["owner"], "/vendor/settings"),
+      "/mfa-challenge?next=%2Fvendor%2Fsettings",
+    );
+  });
+
+  it("owner at aal2 passes", async () => {
+    useSupabase({
+      user: baseUser,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      currentLevel: "aal2",
+      nextLevel: "aal2",
+    });
+    const ctx = await requireVendorSensitiveAction(["owner"]);
+    expect(ctx.membership.role).toBe("owner");
   });
 });
 

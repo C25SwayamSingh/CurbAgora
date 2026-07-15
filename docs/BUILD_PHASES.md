@@ -18,7 +18,8 @@
 ## Phase 2 — Authentication & Tenancy (Current — Complete)
 
 **Goal:** Secure accounts, profiles, organizations, roles, mandatory MFA for
-leadership roles, and database-level tenant isolation.
+sensitive leadership actions and platform admins, and database-level tenant
+isolation.
 
 ### Delivered
 
@@ -37,11 +38,13 @@ leadership roles, and database-level tenant isolation.
 - [x] Customer and vendor onboarding (account-type choice, org creation)
 - [x] Account profile + security pages; sign out other sessions
 - [x] TOTP MFA: enroll, challenge, verify, unenroll
-- [x] **Mandatory MFA (aal2) for organization owners/managers and platform
-      admins** — independently enforced in server guards, sensitive server
-      actions, and database RLS/functions (not merely "if enrolled")
-- [x] Vendor onboarding secure sequence: profile → MFA enroll/verify → org
-      creation → dashboard
+- [x] **Mandatory MFA (aal2) for sensitive org/member management actions and
+      for platform admins (always)** — independently enforced in server
+      guards, sensitive server actions, and database RLS. Organization
+      creation and dashboard access are MFA-optional; MFA is suggested from
+      the dashboard afterward.
+- [x] Vendor onboarding sequence: profile → org creation → dashboard (MFA
+      optional throughout, suggested afterward)
 - [x] Zod server-side validation; open-redirect protection; safe errors
 - [x] Unit tests (guards matrix, actions, schemas, redirects), 46 pgTAP
       RLS/AAL tests, Playwright route-protection E2E

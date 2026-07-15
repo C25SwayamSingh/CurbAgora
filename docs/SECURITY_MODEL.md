@@ -128,21 +128,23 @@ recursion). Inside DEFINER functions, `current_user` is the function owner
 closed a bypass where self role changes and final-owner deletion were not
 blocked for API clients.
 
-## MFA (Supabase TOTP) — mandatory for owners/managers and platform admins
+## MFA (Supabase TOTP) — optional at signup, mandatory for sensitive actions
 
-MFA is **optional** for customers and staff, and **mandatory** for
-organization owners/managers and platform administrators. There is no
-custom, client-writable "is MFA verified" flag anywhere in the system —
-every check reads Supabase Auth's own `aal` (Authenticator Assurance Level)
-claim, which only the TOTP challenge/verify APIs can ever set to `aal2`.
+MFA is **optional** for customers, staff, and for organization owners/
+managers creating an account or using the dashboard, and **mandatory** for
+organization owners/managers performing sensitive management actions and
+for platform administrators (always). There is no custom, client-writable
+"is MFA verified" flag anywhere in the system — every check reads Supabase
+Auth's own `aal` (Authenticator Assurance Level) claim, which only the TOTP
+challenge/verify APIs can ever set to `aal2`.
 
-| Role                   | MFA requirement                                                   |
-| ---------------------- | ----------------------------------------------------------------- |
-| Customer               | Optional                                                          |
-| Vendor staff           | Optional (for now)                                                |
-| Organization owner     | **Mandatory** — enroll + verify before creating/managing an org   |
-| Organization manager   | **Mandatory** — enroll + verify before manager-level actions      |
-| Platform administrator | **Always mandatory** — every admin-level read/write requires aal2 |
+| Role                   | MFA requirement                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Customer               | Optional                                                                                                                          |
+| Vendor staff           | Optional (for now)                                                                                                                |
+| Organization owner     | Optional to create an org and use the dashboard; **mandatory** before sensitive management actions (org settings, member changes) |
+| Organization manager   | Optional to use the dashboard; **mandatory** before manager-level sensitive actions                                               |
+| Platform administrator | **Always mandatory** — every admin-level read/write requires aal2                                                                 |
 
 ### Enrollment / challenge flow
 
@@ -153,34 +155,33 @@ claim, which only the TOTP challenge/verify APIs can ever set to `aal2`.
   fresh on every request from
   `supabase.auth.mfa.getAuthenticatorAssuranceLevel()` — never from client
   state, cookies, or profile fields.
-- `enforceMfaVerified(ctx, nextPath)` is the single mandatory-MFA gate: if
-  the session is not aal2, it redirects to `/mfa-enroll` (no verified factor
-  yet) or `/mfa-challenge` (a factor is enrolled but this session has not
-  verified it). Both pages return to `nextPath` (validated by
-  `safeNextPath()`) once the step is complete.
-- **Vendor onboarding sequence**
-  (`requireVendorForOrgCreation`/`resolveVendorOnboardingPath`): 1) choose
+- `enforceMfaVerified(ctx, nextPath)` is the mandatory-MFA gate used where
+  MFA is actually required: if the session is not aal2, it redirects to
+  `/mfa-enroll` (no verified factor yet) or `/mfa-challenge` (a factor is
+  enrolled but this session has not verified it). Both pages return to
+  `nextPath` (validated by `safeNextPath()`) once the step is complete.
+- **Vendor onboarding sequence** (`resolveVendorOnboardingPath`): 1) choose
   the vendor path (`/onboarding`) → 2) complete the personal profile
-  (`/onboarding/vendor/profile`) → 3) enroll **and verify** MFA
-  (`/onboarding/vendor/mfa`) → 4) create the organization atomically
-  (`/onboarding/vendor`) → 5) vendor dashboard (`/vendor`). Step 4 is
-  unreachable without a verified aal2 session, in both the guard and the
-  database function.
-- **Existing owners/managers without MFA**: `requireVendorDashboard()`
-  blocks `/vendor` itself for owner/manager roles until MFA is verified —
-  there is no grandfathering for accounts that predate this requirement.
-  Staff access is unaffected.
+  (`/onboarding/vendor/profile`) → 3) create the organization atomically
+  (`/onboarding/vendor`) → 4) vendor dashboard (`/vendor`). None of these
+  steps require MFA — `requireVendorForOrgCreation` and
+  `requireVendorDashboard` only require an authenticated session.
+- **MFA as a dashboard suggestion**: owners/managers without a verified
+  session see a suggestion banner on `/vendor` linking to
+  `/account/security`, where the existing self-service `MfaEnrollment` flow
+  lives — the same component used by `/mfa-enroll`.
+- **Sensitive management actions**: `requireVendorSensitiveAction()` remains
+  mandatory-MFA for owners/managers performing org-settings or
+  member-management writes (not yet wired to any shipped UI as of this
+  writing — the DB policies and guard are ready for when that UI ships).
 - Platform admins: `requirePlatformAdmin()` requires aal2 unconditionally;
   `/admin` is unreachable without it. The database's `is_platform_admin()`
   also requires aal2, so any other policy using that function (profiles,
   organizations, organization_members reads) also stops recognizing an
-  unverified admin session, independent of the app layer.
+  unverified admin session, independent of the app layer. Unrelated to and
+  unaffected by the owner/manager creation/dashboard change above.
 - Unenrollment of a **verified** factor (self-service, `/account/security`)
-  requires an aal2 session. Cancelling an **in-progress, unverified**
-  enrollment during vendor onboarding is a separate, narrower action that
-  runs at aal1 by design (the user hasn't verified anything yet to prove
-  aal2 with) and can only ever remove a factor still in `unverified` status
-  — it never touches a verified factor.
+  requires an aal2 session.
 - Recovery: the manual TOTP secret is shown only on demand (hidden by
   default) during enrollment and is never logged or persisted outside the
   Supabase enrollment response; account-recovery options are surfaced via
@@ -189,26 +190,31 @@ claim, which only the TOTP challenge/verify APIs can ever set to `aal2`.
 
 ### Independent, defense-in-depth enforcement
 
-Frontend redirects are a UX convenience only — every layer re-verifies
-independently so a bypass at one layer alone cannot grant access:
+Frontend redirects are a UX convenience only — every layer that _does_
+require MFA re-verifies independently so a bypass at one layer alone cannot
+grant access. This applies to sensitive management actions and platform
+admin, not to org creation or dashboard access (neither requires MFA at
+any layer):
 
-1. **Page guards** (`requireVendorForOrgCreation`, `requireVendorDashboard`,
-   `requireVendorSensitiveAction`, `requirePlatformAdmin`) redirect before
-   rendering.
+1. **Page guards** (`requireVendorSensitiveAction`, `requirePlatformAdmin`)
+   redirect before rendering.
 2. **Server actions** independently call `enforceMfaVerified()` (or an
-   equivalent guard) immediately before every sensitive write —
-   `createOrganizationAction` is the concrete example today; the same
-   pattern is the required entry point for future member-management,
-   organization-settings, loyalty-configuration, customer-data-access, and
-   billing-administration actions.
+   equivalent guard) immediately before every sensitive write — the
+   required entry point for member-management, organization-settings,
+   loyalty-configuration, customer-data-access, and billing-administration
+   actions once built.
 3. **Database** — restrictive RLS policies (`mfa_assurance_ok()`) require an
-   aal2 JWT for organization/membership writes, and
-   `create_organization_with_owner()` checks the JWT directly. A request
-   that somehow skipped both app layers still cannot write.
+   aal2 JWT for organization/membership writes. A request that somehow
+   skipped both app layers still cannot write.
+
+Organization creation (`create_organization_with_owner()`) requires only an
+authenticated, confirmed-email session — no MFA layer at any of the three
+points above. It's `SECURITY DEFINER` and bypasses RLS entirely, which is
+why it never had a restrictive-policy layer in the first place; the app-
+and DB-layer aal2 checks it previously had were removed together.
 
 ### Sensitive operations requiring AAL2 (current and architected-for)
 
-- Creating an organization + its initial owner membership (built)
 - Updating organization settings (RLS ready; no settings UI yet)
 - Inviting/adding/removing members, or changing member roles (RLS ready; no
   invitation UI yet)
@@ -216,6 +222,9 @@ independently so a bypass at one layer alone cannot grant access:
 - Future: loyalty configuration, customer-data access, billing
   administration — must use `requireVendorSensitiveAction()` server-side and
   an AAL2-gated RLS policy at the database level when built.
+
+Creating an organization is **not** in this list — it requires only an
+authenticated session (see above).
 
 ## Application-layer protections
 

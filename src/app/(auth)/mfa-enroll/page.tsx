@@ -18,10 +18,10 @@ export const metadata: Metadata = {
 
 /**
  * Mandatory MFA enrollment step. Reached whenever a guard determines the
- * user must enroll a factor before continuing (organization owners/managers
- * performing sensitive actions, or vendor onboarding before organization
- * creation) — see `requireVendorForOrgCreation` / `requireVendorSensitiveAction`
- * / `requireVendorDashboard` in `src/lib/auth/guards.ts`.
+ * user must enroll a factor before continuing — organization owners/managers
+ * performing sensitive actions (`requireVendorSensitiveAction`) or platform
+ * admins — see `src/lib/auth/guards.ts`. Org creation and dashboard access
+ * no longer require MFA, so those guards never redirect here.
  */
 export default async function MfaEnrollPage({
   searchParams,

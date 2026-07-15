@@ -37,15 +37,16 @@
    permanent and can be changed from the header mode switch.
 2. **Customer:** complete basic profile → `/customer` dashboard. Every
    authenticated user can use customer mode, including vendor members.
-3. **Vendor — mandatory MFA sequence** (organization creation requires aal2):
+3. **Vendor sequence** (MFA optional — not a precondition to any step):
    1. `/onboarding/vendor/profile` — personal profile (display name; initials
       avatar in UI).
-   2. `/onboarding/vendor/mfa` — enroll TOTP and verify this session.
-   3. `/onboarding/vendor` — organization details → atomic org + owner
+   2. `/onboarding/vendor` — organization details → atomic org + owner
       membership. Users may return to customer home before creating an org.
-   4. `/vendor` dashboard (membership required).
+   3. `/vendor` dashboard (membership required). A suggestion banner links
+      owners/managers without a verified session to `/account/security` to
+      set up TOTP MFA — optional, not required to use the dashboard.
 4. **Become a vendor later:** same account → mode switch or account page →
-   vendor onboarding (profile if needed → MFA → org).
+   vendor onboarding (profile if needed → org).
 5. Partially onboarded users resume via `resolveVendorOnboardingPath()`.
 
 ### Interface mode switch
@@ -61,12 +62,13 @@ active `organization_members` (server guards + RLS).
 2. `/account/security` — change password, TOTP MFA, sign out, sign out other
    sessions, recovery guidance.
 3. `/mfa-enroll` — the mandatory-MFA redirect target when an organization
-   owner/manager (or platform admin) with no enrolled factor attempts a
-   sensitive action outside onboarding; returns to the original destination
-   once enrollment is verified.
-4. Organization owners/managers **cannot** reach `/vendor` at all without a
-   verified MFA session (no grandfathering for existing accounts); platform
-   admins are blocked from `/admin` until enrolled and verified.
+   owner/manager attempts a sensitive management action (not org creation or
+   dashboard access — those are MFA-optional) or a platform admin with no
+   enrolled factor; returns to the original destination once enrollment is
+   verified.
+4. Organization owners/managers can reach `/vendor` and create an
+   organization without MFA; platform admins are blocked from `/admin` until
+   enrolled and verified.
 
 ## Customer Flows
 
@@ -80,11 +82,11 @@ Full discovery, maps, and live locations arrive in a later phase.
 ### List a business (implemented)
 
 1. Vendor clicks "List Your Business" → account creation → personal profile
-   → **mandatory MFA enrollment + verification** → organization created
-   atomically → vendor dashboard.
+   → organization created atomically → vendor dashboard. MFA is not required
+   at any step.
 2. Dashboard shows org details and the member roster (role-scoped: staff see
-   only themselves). Owners/managers cannot reach the dashboard at all
-   without a verified MFA session.
+   only themselves). A suggestion banner nudges owners/managers without a
+   verified session toward `/account/security` to add TOTP MFA.
 
 ### Team management (partially implemented)
 

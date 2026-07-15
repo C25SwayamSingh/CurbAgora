@@ -49,9 +49,10 @@ const validForm = {
   slug: "taco-cart",
 };
 
-// Organization creation is a sensitive, mandatory-MFA action: tests that
-// reach the database call must simulate a fully MFA-verified (aal2)
-// session, exactly like `requireVendorForOrgCreation` requires in practice.
+// Organization creation no longer requires MFA — these tests use an aal2
+// session purely as a realistic default, not because it's required to reach
+// the database call. Sensitive management actions after creation remain
+// mandatory-MFA (see `requireVendorSensitiveAction` and its own tests).
 const aal2 = { currentLevel: "aal2" as const, nextLevel: "aal2" as const };
 
 beforeEach(() => {
@@ -98,15 +99,15 @@ describe("createOrganizationAction", () => {
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
-  it("requires a fully MFA-verified session, even for a vendor with the right role (no factor enrolled)", async () => {
+  it("succeeds for a vendor with no MFA factor enrolled at all", async () => {
     const client = useSupabase({ user, profile: vendorProfile });
     await expect(
       createOrganizationAction(idleState, form(validForm)),
-    ).rejects.toThrow("REDIRECT:/mfa-enroll?next=%2Fonboarding%2Fvendor");
-    expect(client.rpc).not.toHaveBeenCalled();
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.rpc).toHaveBeenCalled();
   });
 
-  it("sends an enrolled-but-unverified vendor to the MFA challenge, not straight through", async () => {
+  it("succeeds for an enrolled-but-unverified-this-session vendor", async () => {
     const client = useSupabase({
       user,
       profile: vendorProfile,
@@ -115,8 +116,8 @@ describe("createOrganizationAction", () => {
     });
     await expect(
       createOrganizationAction(idleState, form(validForm)),
-    ).rejects.toThrow("REDIRECT:/mfa-challenge?next=%2Fonboarding%2Fvendor");
-    expect(client.rpc).not.toHaveBeenCalled();
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.rpc).toHaveBeenCalled();
   });
 
   it("validates the slug server-side", async () => {

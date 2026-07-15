@@ -177,7 +177,7 @@ export async function requireVendorMember(
   return { ...ctx, membership };
 }
 
-/** Resume vendor onboarding: profile → MFA → organization creation. */
+/** Resume vendor onboarding: profile → organization creation. */
 export function resolveVendorOnboardingPath(ctx: AuthContext): string {
   if (hasVendorMembership(ctx)) {
     return "/vendor";
@@ -186,18 +186,20 @@ export function resolveVendorOnboardingPath(ctx: AuthContext): string {
   if (!displayName) {
     return "/onboarding/vendor/profile";
   }
-  if (ctx.aal !== "aal2") {
-    return "/onboarding/vendor/mfa";
-  }
   return "/onboarding/vendor";
 }
 
+/**
+ * Org creation guard boundary. MFA is not required to create an
+ * organization — only to perform sensitive management actions afterward
+ * (see `requireVendorSensitiveAction`). Kept as a thin named wrapper so the
+ * call site documents intent and gives a single seam for any future
+ * non-MFA creation constraint.
+ */
 export async function requireVendorForOrgCreation(
   nextPath?: string,
 ): Promise<AuthContext> {
-  const ctx = await requireAuth(nextPath);
-  enforceMfaVerified(ctx, nextPath);
-  return ctx;
+  return requireAuth(nextPath);
 }
 
 export async function requireVendorSensitiveAction(
@@ -209,14 +211,16 @@ export async function requireVendorSensitiveAction(
   return ctx;
 }
 
+/**
+ * Dashboard access requires only active membership — MFA is optional here
+ * for every role, including owners/managers (matches staff). Sensitive
+ * writes performed from the dashboard still go through
+ * `requireVendorSensitiveAction`, which remains mandatory-MFA.
+ */
 export async function requireVendorDashboard(
   nextPath = "/vendor",
 ): Promise<VendorContext> {
-  const ctx = await requireVendorMember(undefined, nextPath);
-  if (isMfaMandatoryRole(ctx.membership.role)) {
-    enforceMfaVerified(ctx, nextPath);
-  }
-  return ctx;
+  return requireVendorMember(undefined, nextPath);
 }
 
 export async function requirePlatformAdmin(

@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import Link from "next/link";
 import {
   AlertCircle,
   Check,
@@ -16,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  cancelMfaEnrollmentAction,
   enrollMfaAction,
   verifyMfaEnrollmentAction,
   type MfaEnrollmentState,
@@ -29,17 +27,11 @@ import { SubmitButton } from "@/features/authentication/components/submit-button
  * TOTP enrollment: start enrollment, open it in an authenticator app (or
  * scan the QR on another device, or copy the setup key as a last resort),
  * then confirm with the first 6-digit code. All verification happens
- * server-side.
- *
- * `backPath` is opt-in: only the vendor-onboarding call site passes it, so
- * the mandatory-MFA (`/mfa-enroll`) and self-service (`/account/security`)
- * call sites render exactly as before — no Back/Cancel UI, no vendor-specific
- * copy. Customer/self-service MFA stays the simpler, generic experience.
+ * server-side. MFA is always optional/self-service here — used from the
+ * mandatory-MFA redirect target (`/mfa-enroll`, for sensitive vendor
+ * actions and platform admins) and from `/account/security`.
  */
-export function MfaEnrollment({
-  nextPath,
-  backPath,
-}: { nextPath?: string; backPath?: string } = {}) {
+export function MfaEnrollment({ nextPath }: { nextPath?: string } = {}) {
   const [enrollment, setEnrollment] = React.useState<MfaEnrollmentState>();
   const [starting, setStarting] = React.useState(false);
   const [secretVisible, setSecretVisible] = React.useState(false);
@@ -48,7 +40,6 @@ export function MfaEnrollment({
     verifyMfaEnrollmentAction,
     idleState,
   );
-  const [, cancelAction] = useActionState(cancelMfaEnrollmentAction, idleState);
 
   async function startEnrollment() {
     setStarting(true);
@@ -89,26 +80,10 @@ export function MfaEnrollment({
           {starting ? "Preparing…" : "Set up authenticator app"}
         </Button>
         <p className="text-sm text-muted-foreground">
-          {backPath ? (
-            <>
-              As an organization owner or manager, you control your team&apos;s
-              access and your business&apos;s data — two-factor authentication
-              is required so a leaked password alone can&apos;t put your
-              business at risk.
-            </>
-          ) : (
-            <>
-              Adds a 6-digit code from an app like Google Authenticator or
-              1Password as a second step when you sign in — so a stolen password
-              alone is not enough to access your account.
-            </>
-          )}
+          Adds a 6-digit code from an app like Google Authenticator or 1Password
+          as a second step when you sign in — so a stolen password alone is not
+          enough to access your account.
         </p>
-        {backPath ? (
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backPath}>Back</Link>
-          </Button>
-        ) : null}
       </div>
     );
   }
@@ -226,26 +201,10 @@ export function MfaEnrollment({
         </SubmitButton>
       </form>
 
-      {backPath ? (
-        <p className="text-xs text-muted-foreground">
-          Next step: creating your business organization.
-        </p>
-      ) : null}
-
       <p className="text-xs text-muted-foreground">
         Account recovery options are managed from Security settings after setup
         — you won&apos;t need to save this key.
       </p>
-
-      {backPath ? (
-        <form action={cancelAction}>
-          <input type="hidden" name="factorId" value={enrollment.factorId} />
-          <input type="hidden" name="next" value={backPath} />
-          <SubmitButton variant="ghost" size="sm" pendingLabel="Going back…">
-            Back
-          </SubmitButton>
-        </form>
-      ) : null}
     </div>
   );
 }

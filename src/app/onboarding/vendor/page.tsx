@@ -20,14 +20,12 @@ export const metadata: Metadata = {
 const VENDOR_ONBOARDING_STEPS = [
   "Get started",
   "Your details",
-  "Two-factor setup",
   "Your organization",
 ];
 
 export default async function VendorOnboardingPage() {
-  // Mandatory: MFA must be enrolled AND verified (aal2) before an
-  // organization can be created — enforced again independently by the
-  // create_organization_with_owner() database function.
+  // Creating an organization requires only an authenticated session — MFA
+  // is optional here and suggested from the dashboard afterward instead.
   const ctx = await requireVendorForOrgCreation("/onboarding/vendor");
 
   // Already owns/belongs to an org — onboarding is effectively done.
@@ -38,7 +36,7 @@ export default async function VendorOnboardingPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-xl">
-        <OnboardingSteps steps={VENDOR_ONBOARDING_STEPS} current={3} />
+        <OnboardingSteps steps={VENDOR_ONBOARDING_STEPS} current={2} />
         <Card>
           <CardHeader>
             <CardTitle>Create your organization</CardTitle>
