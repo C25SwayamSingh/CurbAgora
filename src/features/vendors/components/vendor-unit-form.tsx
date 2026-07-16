@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, X } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,11 +20,16 @@ import {
 } from "@/features/vendors/actions";
 import {
   CUISINE_CATEGORIES,
+  MAX_CUISINE_ENTRIES,
   OPERATING_STATUSES,
   PAYMENT_METHODS,
   VENDOR_UNIT_TYPES,
   suggestSlug,
 } from "@/features/vendors/schemas";
+
+const PREDEFINED_CUISINE_VALUES = new Set(
+  CUISINE_CATEGORIES.map((c) => c.value),
+);
 
 /** A single choice pill: a visually hidden native input inside a styled label. */
 function OptionPill({
@@ -63,7 +69,13 @@ function OptionPill({
   );
 }
 
-export function VendorUnitForm({ initialUnit }: { initialUnit?: VendorUnit }) {
+export function VendorUnitForm({
+  initialUnit,
+  organizationSlug,
+}: {
+  initialUnit?: VendorUnit;
+  organizationSlug: string;
+}) {
   const isEdit = Boolean(initialUnit);
   const [state, formAction] = useActionState(
     isEdit ? updateVendorUnitAction : createVendorUnitAction,
@@ -71,14 +83,24 @@ export function VendorUnitForm({ initialUnit }: { initialUnit?: VendorUnit }) {
   );
 
   const [slug, setSlug] = React.useState(initialUnit?.slug ?? "");
-  const [slugEdited, setSlugEdited] = React.useState(false);
+  const [slugEditable, setSlugEditable] = React.useState(false);
   const [unitType, setUnitType] = React.useState(initialUnit?.unit_type ?? "");
   const [operatingStatus, setOperatingStatus] = React.useState(
     initialUnit?.operating_status ?? "open",
   );
+
+  const initialCuisines = initialUnit?.cuisine_categories ?? [];
   const [cuisineCategories, setCuisineCategories] = React.useState<string[]>(
-    initialUnit?.cuisine_categories ?? [],
+    initialCuisines.filter((c) => PREDEFINED_CUISINE_VALUES.has(c)),
   );
+  const [customCuisines, setCustomCuisines] = React.useState<string[]>(
+    initialCuisines.filter((c) => !PREDEFINED_CUISINE_VALUES.has(c)),
+  );
+  const [showCustomCuisine, setShowCustomCuisine] = React.useState(
+    initialCuisines.some((c) => !PREDEFINED_CUISINE_VALUES.has(c)),
+  );
+  const [customCuisineInput, setCustomCuisineInput] = React.useState("");
+
   const [paymentMethods, setPaymentMethods] = React.useState<string[]>(
     initialUnit?.payment_methods ?? [],
   );
@@ -93,6 +115,27 @@ export function VendorUnitForm({ initialUnit }: { initialUnit?: VendorUnit }) {
     return list.includes(value)
       ? list.filter((v) => v !== value)
       : [...list, value];
+  }
+
+  const totalCuisineCount = cuisineCategories.length + customCuisines.length;
+
+  function addCustomCuisine() {
+    const trimmed = customCuisineInput.trim().replace(/\s+/g, " ");
+    if (!trimmed || totalCuisineCount >= MAX_CUISINE_ENTRIES) {
+      setCustomCuisineInput("");
+      return;
+    }
+    const alreadyPresent =
+      customCuisines.some((c) => c.toLowerCase() === trimmed.toLowerCase()) ||
+      cuisineCategories.some(
+        (c) =>
+          CUISINE_CATEGORIES.find((o) => o.value === c)?.label.toLowerCase() ===
+          trimmed.toLowerCase(),
+      );
+    if (!alreadyPresent) {
+      setCustomCuisines((prev) => [...prev, trimmed]);
+    }
+    setCustomCuisineInput("");
   }
 
   return (
@@ -117,7 +160,7 @@ export function VendorUnitForm({ initialUnit }: { initialUnit?: VendorUnit }) {
           defaultValue={initialUnit?.name}
           required
           onChange={(event) => {
-            if (!slugEdited) {
+            if (!slugEditable) {
               setSlug(suggestSlug(event.target.value));
             }
           }}
@@ -128,25 +171,43 @@ export function VendorUnitForm({ initialUnit }: { initialUnit?: VendorUnit }) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="slug">URL name</Label>
-        <Input
-          id="slug"
-          name="slug"
-          value={slug}
-          onChange={(event) => {
-            setSlugEdited(true);
-            setSlug(event.target.value.toLowerCase());
-          }}
-          placeholder="marias-taco-cart"
-          required
-          aria-describedby="slug-error slug-hint"
-          aria-invalid={Boolean(state.fieldErrors?.slug)}
-        />
-        <p id="slug-hint" className="text-xs text-muted-foreground">
-          Lowercase letters, numbers, and hyphens. Used in this unit&apos;s
-          public link — only needs to be unique among your own vendor units.
+        <Label>Public page link</Label>
+        <p className="break-all text-sm text-muted-foreground">
+          /vendors/{organizationSlug}/
+          <span className="font-medium text-foreground">{slug || "…"}</span>
         </p>
-        <FieldError id="slug-error" errors={state.fieldErrors?.slug} />
+        {slugEditable ? (
+          <>
+            <Input
+              id="slug"
+              name="slug"
+              value={slug}
+              onChange={(event) => setSlug(event.target.value.toLowerCase())}
+              placeholder="marias-taco-cart"
+              required
+              aria-describedby="slug-error slug-hint"
+              aria-invalid={Boolean(state.fieldErrors?.slug)}
+            />
+            <p id="slug-hint" className="text-xs text-muted-foreground">
+              Lowercase letters, numbers, and hyphens — only needs to be unique
+              among your own vendor units.
+            </p>
+            <FieldError id="slug-error" errors={state.fieldErrors?.slug} />
+          </>
+        ) : (
+          <>
+            <input type="hidden" name="slug" value={slug} />
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0"
+              onClick={() => setSlugEditable(true)}
+            >
+              Edit link
+            </Button>
+          </>
+        )}
       </div>
 
       <fieldset className="space-y-2">
@@ -200,8 +261,80 @@ export function VendorUnitForm({ initialUnit }: { initialUnit?: VendorUnit }) {
               }
             />
           ))}
+          <button
+            type="button"
+            onClick={() => setShowCustomCuisine((v) => !v)}
+            aria-expanded={showCustomCuisine}
+            className={cn(
+              "cursor-pointer rounded-full border px-3 py-1.5 text-sm transition-colors",
+              showCustomCuisine
+                ? "border-primary bg-primary/10 font-medium text-primary"
+                : "border-border text-muted-foreground hover:bg-accent/50",
+            )}
+          >
+            Other
+          </button>
         </div>
-        <p className="text-xs text-muted-foreground">Choose up to 5.</p>
+
+        {showCustomCuisine ? (
+          <div className="space-y-2 pt-1">
+            <div className="flex gap-2">
+              <Input
+                value={customCuisineInput}
+                onChange={(event) => setCustomCuisineInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addCustomCuisine();
+                  }
+                }}
+                placeholder="e.g. Ethiopian"
+                aria-label="Add a custom cuisine"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addCustomCuisine}
+              >
+                Add
+              </Button>
+            </div>
+            {customCuisines.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {customCuisines.map((cuisine) => (
+                  <span
+                    key={cuisine}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/10 py-1 pl-3 pr-1.5 text-sm font-medium text-primary"
+                  >
+                    {cuisine}
+                    <input
+                      type="hidden"
+                      name="cuisineCategories"
+                      value={cuisine}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCustomCuisines((prev) =>
+                          prev.filter((c) => c !== cuisine),
+                        )
+                      }
+                      aria-label={`Remove ${cuisine}`}
+                      className="rounded-full p-0.5 hover:bg-primary/20"
+                    >
+                      <X className="size-3" aria-hidden="true" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <p className="text-xs text-muted-foreground">
+          Choose up to {MAX_CUISINE_ENTRIES}, including custom entries.
+        </p>
         <FieldError
           id="cuisineCategories-error"
           errors={state.fieldErrors?.cuisineCategories}
@@ -222,61 +355,68 @@ export function VendorUnitForm({ initialUnit }: { initialUnit?: VendorUnit }) {
         <FieldError id="city-error" errors={state.fieldErrors?.city} />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="contactPhone">Contact phone (optional)</Label>
-          <Input
-            id="contactPhone"
-            name="contactPhone"
-            type="tel"
-            placeholder="(555) 555-0100"
-            defaultValue={initialUnit?.contact_phone ?? ""}
-            aria-describedby="contactPhone-error"
-            aria-invalid={Boolean(state.fieldErrors?.contactPhone)}
-          />
-          <FieldError
-            id="contactPhone-error"
-            errors={state.fieldErrors?.contactPhone}
-          />
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              name="contactPhoneVisible"
-              checked={contactPhoneVisible}
-              onChange={(e) => setContactPhoneVisible(e.target.checked)}
-              className="size-4 rounded border-input"
+      <fieldset className="space-y-3">
+        <legend className="text-sm font-medium">Business contact</legend>
+        <p className="text-xs text-muted-foreground">
+          Separate from your personal account — a field is only shown on your
+          public page if you turn on its &quot;Show publicly&quot; toggle.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="contactPhone">Business phone (optional)</Label>
+            <Input
+              id="contactPhone"
+              name="contactPhone"
+              type="tel"
+              placeholder="(555) 555-0100"
+              defaultValue={initialUnit?.contact_phone ?? ""}
+              aria-describedby="contactPhone-error"
+              aria-invalid={Boolean(state.fieldErrors?.contactPhone)}
             />
-            Show phone number publicly
-          </label>
-        </div>
+            <FieldError
+              id="contactPhone-error"
+              errors={state.fieldErrors?.contactPhone}
+            />
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                name="contactPhoneVisible"
+                checked={contactPhoneVisible}
+                onChange={(e) => setContactPhoneVisible(e.target.checked)}
+                className="size-4 rounded border-input"
+              />
+              Show publicly
+            </label>
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="contactEmail">Contact email (optional)</Label>
-          <Input
-            id="contactEmail"
-            name="contactEmail"
-            type="email"
-            placeholder="hello@example.com"
-            defaultValue={initialUnit?.contact_email ?? ""}
-            aria-describedby="contactEmail-error"
-            aria-invalid={Boolean(state.fieldErrors?.contactEmail)}
-          />
-          <FieldError
-            id="contactEmail-error"
-            errors={state.fieldErrors?.contactEmail}
-          />
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              name="contactEmailVisible"
-              checked={contactEmailVisible}
-              onChange={(e) => setContactEmailVisible(e.target.checked)}
-              className="size-4 rounded border-input"
+          <div className="space-y-2">
+            <Label htmlFor="contactEmail">Business email (optional)</Label>
+            <Input
+              id="contactEmail"
+              name="contactEmail"
+              type="email"
+              placeholder="hello@example.com"
+              defaultValue={initialUnit?.contact_email ?? ""}
+              aria-describedby="contactEmail-error"
+              aria-invalid={Boolean(state.fieldErrors?.contactEmail)}
             />
-            Show email publicly
-          </label>
+            <FieldError
+              id="contactEmail-error"
+              errors={state.fieldErrors?.contactEmail}
+            />
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                name="contactEmailVisible"
+                checked={contactEmailVisible}
+                onChange={(e) => setContactEmailVisible(e.target.checked)}
+                className="size-4 rounded border-input"
+              />
+              Show publicly
+            </label>
+          </div>
         </div>
-      </div>
+      </fieldset>
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">

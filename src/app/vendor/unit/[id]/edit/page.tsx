@@ -30,12 +30,19 @@ export default async function EditVendorUnitPage({
   // Scoped by both id and the caller's own organization — a manager/owner
   // of one organization can never load another organization's unit into
   // this form, whatever id is in the URL.
-  const { data: unit } = await supabase
-    .from("vendor_units")
-    .select("*")
-    .eq("id", id)
-    .eq("organization_id", ctx.membership.organization_id)
-    .maybeSingle();
+  const [{ data: unit }, { data: organization }] = await Promise.all([
+    supabase
+      .from("vendor_units")
+      .select("*")
+      .eq("id", id)
+      .eq("organization_id", ctx.membership.organization_id)
+      .maybeSingle(),
+    supabase
+      .from("organizations")
+      .select("slug")
+      .eq("id", ctx.membership.organization_id)
+      .maybeSingle(),
+  ]);
 
   if (!unit) {
     redirect("/vendor");
@@ -50,7 +57,10 @@ export default async function EditVendorUnitPage({
             <CardDescription>Keep your public page up to date.</CardDescription>
           </CardHeader>
           <CardContent>
-            <VendorUnitForm initialUnit={unit} />
+            <VendorUnitForm
+              initialUnit={unit}
+              organizationSlug={organization?.slug ?? ""}
+            />
           </CardContent>
         </Card>
       </div>

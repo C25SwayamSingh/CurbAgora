@@ -41,12 +41,12 @@ export function LandingPage() {
               Mobile food vendor platform
             </p>
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              Find great street food near you. Grow your mobile business.
+              <span className="block">Find great street food.</span>
+              <span className="block">Grow your mobile business.</span>
             </h1>
             <p className="mt-4 text-base text-muted-foreground sm:text-lg">
-              A platform for food carts, trucks, stands, and pop-up vendors to
-              reach hungry customers — and for customers to discover what is
-              open right now.
+              The all-in-one platform for customers discovering mobile food
+              vendors — and for vendors running their business.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
               <Button asChild size="lg" className="w-full sm:w-auto">

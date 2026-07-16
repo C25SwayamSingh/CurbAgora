@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { AppShell } from "@/components/app/app-shell";
 import { OnboardingSteps } from "@/components/app/onboarding-steps";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -47,6 +49,9 @@ export default async function CustomerOnboardingPage() {
             />
           </CardContent>
         </Card>
+        <Button asChild variant="ghost" size="sm" className="mt-4">
+          <Link href="/onboarding?choose=1">Back</Link>
+        </Button>
       </div>
     </AppShell>
   );

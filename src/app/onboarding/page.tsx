@@ -20,8 +20,13 @@ import { OnboardingPathForm } from "@/features/authentication/components/onboard
 
 export const metadata: Metadata = { title: pageTitle("Get started") };
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ choose?: string }>;
+}) {
   const ctx = await requireMfaSatisfied("/onboarding");
+  const { choose } = await searchParams;
 
   if (
     ctx.profile?.onboarding_status === "complete" &&
@@ -37,7 +42,10 @@ export default async function OnboardingPage() {
     redirect("/customer");
   }
 
-  if (ctx.profile?.onboarding_status === "in_progress") {
+  // A deliberate "Back" from step 2 (?choose=1) re-shows the path choice
+  // instead of auto-resuming step 2 — the resume shortcut below only
+  // applies to a plain, unprompted visit to this page.
+  if (ctx.profile?.onboarding_status === "in_progress" && !choose) {
     if (ctx.profile.preferred_mode === "vendor") {
       redirect(resolveVendorOnboardingPath(ctx));
     }

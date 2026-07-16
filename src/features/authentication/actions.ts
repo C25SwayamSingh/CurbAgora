@@ -345,17 +345,28 @@ export async function chooseOnboardingPathAction(
 /** @deprecated Use chooseOnboardingPathAction */
 export const chooseAccountTypeAction = chooseOnboardingPathAction;
 
-/** Switch interface mode — preferred_mode only; vendor access still requires membership. */
+/**
+ * Switch interface mode — preferred_mode only; vendor access still requires
+ * membership. On any failure (bad input, a transient DB error), returns to
+ * `currentPath` (the page the switcher was clicked from, threaded through as
+ * a hidden field) rather than jumping to an unrelated page — the mode
+ * toggle has no room to show an error message, so the safest failure
+ * behavior is "nothing visibly changed," not "landed somewhere unexpected."
+ */
 export async function setPreferredModeAction(
   formData: FormData,
 ): Promise<void> {
   const ctx = await requireAuth();
+  const fallback = safeNextPath(
+    formData.get("currentPath")?.toString(),
+    "/account",
+  );
 
   const parsed = preferredModeSchema.safeParse({
     preferredMode: formData.get("preferredMode"),
   });
   if (!parsed.success) {
-    redirect("/account");
+    redirect(fallback);
   }
 
   const supabase = await createServerClient();
@@ -366,7 +377,7 @@ export async function setPreferredModeAction(
 
   if (error) {
     console.error("preferred mode update failed", { code: error.code });
-    redirect("/account");
+    redirect(fallback);
   }
 
   if (parsed.data.preferredMode === "customer") {

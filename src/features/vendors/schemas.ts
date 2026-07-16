@@ -26,6 +26,11 @@ export const VENDOR_UNIT_TYPES: { value: VendorUnitType; label: string }[] = [
   { value: "pop_up", label: "Pop-up" },
 ];
 
+/**
+ * Predefined cuisine suggestions. Storage is free-form text (see
+ * vendorUnitSchema below) so a vendor may also add custom entries not in
+ * this list — CUISINE_CATEGORIES only drives the quick-pick pills.
+ */
 export const CUISINE_CATEGORIES: { value: CuisineCategory; label: string }[] = [
   { value: "american", label: "American" },
   { value: "mexican", label: "Mexican" },
@@ -37,8 +42,10 @@ export const CUISINE_CATEGORIES: { value: CuisineCategory; label: string }[] = [
   { value: "desserts", label: "Desserts" },
   { value: "coffee_and_drinks", label: "Coffee & drinks" },
   { value: "vegan_vegetarian", label: "Vegan & vegetarian" },
-  { value: "other", label: "Other" },
 ];
+
+/** Max combined predefined + custom cuisine entries per vendor unit. */
+export const MAX_CUISINE_ENTRIES = 8;
 
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
@@ -60,10 +67,6 @@ export const OPERATING_STATUSES: {
 const unitTypeValues = VENDOR_UNIT_TYPES.map((t) => t.value) as [
   VendorUnitType,
   ...VendorUnitType[],
-];
-const cuisineCategoryValues = CUISINE_CATEGORIES.map((c) => c.value) as [
-  CuisineCategory,
-  ...CuisineCategory[],
 ];
 const paymentMethodValues = PAYMENT_METHODS.map((p) => p.value) as [
   PaymentMethod,
@@ -102,9 +105,34 @@ export const vendorUnitSchema = z.object({
     .max(280, "Description is too long (280 characters max)")
     .default(""),
   cuisineCategories: z
-    .array(z.enum(cuisineCategoryValues))
-    .max(5, "Choose up to 5 cuisine categories")
-    .default([]),
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(40, "Each cuisine entry must be 40 characters or fewer"),
+    )
+    .default([])
+    .transform((values) => {
+      const seen = new Set<string>();
+      const deduped: string[] = [];
+      for (const value of values) {
+        const key = value.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(value);
+        }
+      }
+      return deduped;
+    })
+    .pipe(
+      z
+        .array(z.string())
+        .max(
+          MAX_CUISINE_ENTRIES,
+          `Choose up to ${MAX_CUISINE_ENTRIES} cuisine categories`,
+        ),
+    ),
   city: z
     .string()
     .trim()

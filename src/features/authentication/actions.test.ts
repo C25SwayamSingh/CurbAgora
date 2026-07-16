@@ -282,6 +282,58 @@ describe("setPreferredModeAction", () => {
       setPreferredModeAction(form({ preferredMode: "vendor" })),
     ).rejects.toThrow("REDIRECT:/onboarding/vendor");
   });
+
+  it("returns to the page the switcher was clicked from on invalid input, instead of an unrelated page", async () => {
+    useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+    });
+    await expect(
+      setPreferredModeAction(
+        form({ preferredMode: "not-a-mode", currentPath: "/vendor/unit/new" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor/unit/new");
+  });
+
+  it("returns to the page the switcher was clicked from when the profile update fails", async () => {
+    useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+      profileUpdateError: { code: "500", message: "connection reset" },
+    });
+    await expect(
+      setPreferredModeAction(
+        form({ preferredMode: "vendor", currentPath: "/account/security" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/account/security");
+  });
+
+  it("falls back to /account when no currentPath was supplied", async () => {
+    useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+      profileUpdateError: { code: "500", message: "connection reset" },
+    });
+    await expect(
+      setPreferredModeAction(form({ preferredMode: "vendor" })),
+    ).rejects.toThrow("REDIRECT:/account");
+  });
+
+  it("ignores an unsafe currentPath (open-redirect protection) and falls back to /account", async () => {
+    useSupabase({
+      user,
+      profile: { id: "user-1", preferred_mode: "customer" },
+      profileUpdateError: { code: "500", message: "connection reset" },
+    });
+    await expect(
+      setPreferredModeAction(
+        form({
+          preferredMode: "vendor",
+          currentPath: "https://evil.example.com",
+        }),
+      ),
+    ).rejects.toThrow("REDIRECT:/account");
+  });
 });
 
 describe("completeVendorProfileAction (vendor onboarding step 2)", () => {

@@ -82,16 +82,37 @@ describe("vendorUnitSchema", () => {
     ).toBe(false);
   });
 
-  it("rejects an unknown cuisine category", () => {
-    expect(
-      vendorUnitSchema.safeParse({
-        ...valid,
-        cuisineCategories: ["martian"],
-      }).success,
-    ).toBe(false);
+  it("accepts a custom cuisine entry alongside predefined ones", () => {
+    const result = vendorUnitSchema.safeParse({
+      ...valid,
+      cuisineCategories: ["mexican", "Ethiopian"],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.cuisineCategories).toEqual(["mexican", "Ethiopian"]);
+    }
   });
 
-  it("caps cuisine categories at 5", () => {
+  it("trims cuisine entries and drops empty ones", () => {
+    const result = vendorUnitSchema.safeParse({
+      ...valid,
+      cuisineCategories: ["  mexican  ", ""],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("deduplicates cuisine entries case-insensitively, keeping first occurrence", () => {
+    const result = vendorUnitSchema.safeParse({
+      ...valid,
+      cuisineCategories: ["Ethiopian", "ethiopian", "mexican"],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.cuisineCategories).toEqual(["Ethiopian", "mexican"]);
+    }
+  });
+
+  it("caps cuisine categories at 8", () => {
     expect(
       vendorUnitSchema.safeParse({
         ...valid,
@@ -102,9 +123,27 @@ describe("vendorUnitSchema", () => {
           "italian",
           "mediterranean",
           "indian",
+          "bbq",
+          "desserts",
+          "coffee_and_drinks",
         ],
       }).success,
     ).toBe(false);
+    expect(
+      vendorUnitSchema.safeParse({
+        ...valid,
+        cuisineCategories: [
+          "american",
+          "mexican",
+          "asian",
+          "italian",
+          "mediterranean",
+          "indian",
+          "bbq",
+          "desserts",
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects an unknown payment method", () => {

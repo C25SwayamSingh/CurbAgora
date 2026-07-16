@@ -6,6 +6,7 @@
 --
 -- Covers: supabase/migrations/20260706000000_vendor_units.sql
 --          supabase/migrations/20260707000000_vendor_units_multi.sql
+--          supabase/migrations/20260708000000_vendor_units_custom_cuisines.sql
 --
 -- Self-contained: each pgTAP test file is wrapped in its own transaction
 -- and rolled back, so the helper functions from 001_rls_policies.sql do
@@ -14,7 +15,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(23);
+select plan(24);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: owner + manager + staff of "taco-cart", an unrelated vendor
@@ -98,7 +99,7 @@ select lives_ok(
      values
        ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
         'Taco Cart', 'taco-cart', 'food_truck', 'Tacos and more.',
-        array['mexican']::public.cuisine_category[], 'Austin',
+        array['mexican', 'Oaxacan-style']::text[], 'Austin',
         '555-0100', false, 'owner@tacocart.test', false,
         array['cash']::public.payment_method[], 'open',
         '00000000-0000-0000-0000-000000000001') $$,
@@ -151,7 +152,7 @@ select lives_ok(
      values
        ('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002',
         'Burger Truck', 'taco-cart', 'stand', 'Burgers done right.',
-        array['american']::public.cuisine_category[], 'Dallas',
+        array['american']::text[], 'Dallas',
         '555-0200', true, 'contact@burgertruck.test', true,
         array['cash','credit_card']::public.payment_method[], 'open',
         '00000000-0000-0000-0000-000000000002') $$,
@@ -249,6 +250,17 @@ select is(
     where organization_id = '10000000-0000-0000-0000-000000000001' and slug = 'dessert-cart'),
   'taco-cart',
   'the public view exposes organizations.slug as organization_slug'
+);
+
+-- cuisine_categories is now free-form text: a predefined value ('mexican')
+-- and a custom vendor-entered tag ('Oaxacan-style') both round-trip through
+-- the public view unchanged, since normalization/dedup happens at the app
+-- layer, not the database.
+select is(
+  (select cuisine_categories from public.vendor_unit_previews
+    where organization_slug = 'taco-cart' and slug = 'taco-cart'),
+  array['mexican', 'Oaxacan-style'],
+  'a custom cuisine tag alongside a predefined one round-trips through the public view'
 );
 
 -- Each public URL is (organization_slug, slug) together — same unit slug

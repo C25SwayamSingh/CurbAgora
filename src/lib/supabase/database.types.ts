@@ -2,8 +2,9 @@
  * Database types for the Phase 2 auth/tenancy schema plus vendor_units.
  *
  * Maintained by hand to mirror
- * `supabase/migrations/20260701000000_auth_tenancy_foundation.sql` and
- * `supabase/migrations/20260706000000_vendor_units.sql`.
+ * `supabase/migrations/20260701000000_auth_tenancy_foundation.sql`,
+ * `supabase/migrations/20260706000000_vendor_units.sql`, and later forward
+ * migrations (multi-unit slugs, free-form cuisine tags).
  * When a local Supabase stack is available, regenerate with:
  *
  *   supabase gen types typescript --local > src/lib/supabase/database.types.ts
@@ -21,18 +22,13 @@ export type MembershipStatus = "invited" | "active" | "revoked";
 export type VendorUnitType =
   "food_cart" | "food_truck" | "stand" | "stall" | "pop_up";
 export type VendorOperatingStatus = "open" | "closed" | "temporarily_closed";
-export type CuisineCategory =
-  | "american"
-  | "mexican"
-  | "asian"
-  | "italian"
-  | "mediterranean"
-  | "indian"
-  | "bbq"
-  | "desserts"
-  | "coffee_and_drinks"
-  | "vegan_vegetarian"
-  | "other";
+/**
+ * Free-form cuisine tag: a mix of predefined suggestions (see
+ * CUISINE_CATEGORIES in src/features/vendors/schemas.ts) and custom
+ * vendor-entered values. Plain text in the database since
+ * 20260708000000_vendor_units_custom_cuisines.sql — no longer a DB enum.
+ */
+export type CuisineCategory = string;
 export type PaymentMethod =
   "cash" | "credit_card" | "debit_card" | "mobile_pay" | "contactless";
 
@@ -288,7 +284,6 @@ export type Database = {
       membership_status: MembershipStatus;
       vendor_unit_type: VendorUnitType;
       vendor_operating_status: VendorOperatingStatus;
-      cuisine_category: CuisineCategory;
       payment_method: PaymentMethod;
     };
     CompositeTypes: Record<string, never>;
