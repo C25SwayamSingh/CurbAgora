@@ -89,6 +89,8 @@ export default async function VendorPublicPreviewPage({
               aria-hidden="true"
             />{" "}
             {unit.city}
+            {unit.state ? `, ${unit.state}` : ""}
+            {unit.neighborhood ? ` · ${unit.neighborhood}` : ""}
           </p>
           <span
             className={

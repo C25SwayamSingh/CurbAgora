@@ -32,16 +32,17 @@ export const VENDOR_UNIT_TYPES: { value: VendorUnitType; label: string }[] = [
  * this list — CUISINE_CATEGORIES only drives the quick-pick pills.
  */
 export const CUISINE_CATEGORIES: { value: CuisineCategory; label: string }[] = [
-  { value: "american", label: "American" },
+  { value: "halal", label: "Halal" },
+  { value: "mediterranean", label: "Mediterranean" },
+  { value: "desserts", label: "Desserts" },
+  { value: "coffee_and_drinks", label: "Coffee & drinks" },
   { value: "mexican", label: "Mexican" },
   { value: "asian", label: "Asian" },
   { value: "italian", label: "Italian" },
-  { value: "mediterranean", label: "Mediterranean" },
   { value: "indian", label: "Indian" },
   { value: "bbq", label: "BBQ" },
-  { value: "desserts", label: "Desserts" },
-  { value: "coffee_and_drinks", label: "Coffee & drinks" },
   { value: "vegan_vegetarian", label: "Vegan & vegetarian" },
+  { value: "american", label: "American" },
 ];
 
 /** Max combined predefined + custom cuisine entries per vendor unit. */
@@ -53,6 +54,61 @@ export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "debit_card", label: "Debit card" },
   { value: "mobile_pay", label: "Mobile pay" },
   { value: "contactless", label: "Contactless" },
+];
+
+/** USPS 2-letter codes for the 50 states + DC. */
+export const US_STATES: { value: string; label: string }[] = [
+  { value: "AL", label: "Alabama" },
+  { value: "AK", label: "Alaska" },
+  { value: "AZ", label: "Arizona" },
+  { value: "AR", label: "Arkansas" },
+  { value: "CA", label: "California" },
+  { value: "CO", label: "Colorado" },
+  { value: "CT", label: "Connecticut" },
+  { value: "DE", label: "Delaware" },
+  { value: "DC", label: "District of Columbia" },
+  { value: "FL", label: "Florida" },
+  { value: "GA", label: "Georgia" },
+  { value: "HI", label: "Hawaii" },
+  { value: "ID", label: "Idaho" },
+  { value: "IL", label: "Illinois" },
+  { value: "IN", label: "Indiana" },
+  { value: "IA", label: "Iowa" },
+  { value: "KS", label: "Kansas" },
+  { value: "KY", label: "Kentucky" },
+  { value: "LA", label: "Louisiana" },
+  { value: "ME", label: "Maine" },
+  { value: "MD", label: "Maryland" },
+  { value: "MA", label: "Massachusetts" },
+  { value: "MI", label: "Michigan" },
+  { value: "MN", label: "Minnesota" },
+  { value: "MS", label: "Mississippi" },
+  { value: "MO", label: "Missouri" },
+  { value: "MT", label: "Montana" },
+  { value: "NE", label: "Nebraska" },
+  { value: "NV", label: "Nevada" },
+  { value: "NH", label: "New Hampshire" },
+  { value: "NJ", label: "New Jersey" },
+  { value: "NM", label: "New Mexico" },
+  { value: "NY", label: "New York" },
+  { value: "NC", label: "North Carolina" },
+  { value: "ND", label: "North Dakota" },
+  { value: "OH", label: "Ohio" },
+  { value: "OK", label: "Oklahoma" },
+  { value: "OR", label: "Oregon" },
+  { value: "PA", label: "Pennsylvania" },
+  { value: "RI", label: "Rhode Island" },
+  { value: "SC", label: "South Carolina" },
+  { value: "SD", label: "South Dakota" },
+  { value: "TN", label: "Tennessee" },
+  { value: "TX", label: "Texas" },
+  { value: "UT", label: "Utah" },
+  { value: "VT", label: "Vermont" },
+  { value: "VA", label: "Virginia" },
+  { value: "WA", label: "Washington" },
+  { value: "WV", label: "West Virginia" },
+  { value: "WI", label: "Wisconsin" },
+  { value: "WY", label: "Wyoming" },
 ];
 
 export const OPERATING_STATUSES: {
@@ -76,6 +132,7 @@ const operatingStatusValues = OPERATING_STATUSES.map((s) => s.value) as [
   VendorOperatingStatus,
   ...VendorOperatingStatus[],
 ];
+const stateValues = US_STATES.map((s) => s.value) as [string, ...string[]];
 
 /** Blank/missing optional text fields arrive as "" or null from FormData. */
 function emptyToUndefined(value: unknown) {
@@ -138,6 +195,21 @@ export const vendorUnitSchema = z.object({
     .trim()
     .min(1, "City is required")
     .max(120, "City name is too long"),
+  state: z.enum(stateValues, {
+    message: "Choose a state",
+  }),
+  neighborhood: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().max(120, "Neighborhood is too long").optional(),
+  ),
+  /**
+   * Set only when the city was selected from the autocomplete dropdown —
+   * used server-side (see actions.ts) to re-verify the place is a real
+   * city before saving. Absent when Google Places isn't configured or the
+   * vendor typed the city manually; in that case city/state are trusted
+   * as plain text, same as before this feature existed.
+   */
+  placeId: z.preprocess(emptyToUndefined, z.string().optional()),
   contactPhone: z.preprocess(
     emptyToUndefined,
     z
@@ -178,6 +250,9 @@ export function vendorUnitFormValues(formData: FormData) {
     description: formData.get("description"),
     cuisineCategories: formData.getAll("cuisineCategories"),
     city: formData.get("city"),
+    state: formData.get("state"),
+    neighborhood: formData.get("neighborhood"),
+    placeId: formData.get("placeId"),
     contactPhone: formData.get("contactPhone"),
     contactPhoneVisible: formData.get("contactPhoneVisible") === "on",
     contactEmail: formData.get("contactEmail"),

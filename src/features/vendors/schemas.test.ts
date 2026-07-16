@@ -12,6 +12,9 @@ const valid = {
   description: "Tacos and more.",
   cuisineCategories: ["mexican", "american"],
   city: "Austin",
+  state: "TX",
+  neighborhood: undefined,
+  placeId: undefined,
   contactPhone: undefined,
   contactPhoneVisible: false,
   contactEmail: undefined,
@@ -33,6 +36,7 @@ describe("vendorUnitSchema", () => {
       description: "",
       cuisineCategories: [],
       city: "Dallas",
+      state: "TX",
       contactPhoneVisible: false,
       contactEmailVisible: false,
       paymentMethods: [],
@@ -191,6 +195,26 @@ describe("vendorUnitSchema", () => {
         .success,
     ).toBe(false);
   });
+
+  it("requires a real 2-letter state code", () => {
+    expect(vendorUnitSchema.safeParse({ ...valid, state: "" }).success).toBe(
+      false,
+    );
+    expect(
+      vendorUnitSchema.safeParse({ ...valid, state: "Texas" }).success,
+    ).toBe(false);
+    expect(vendorUnitSchema.safeParse({ ...valid, state: "TX" }).success).toBe(
+      true,
+    );
+  });
+
+  it("treats an empty neighborhood as not provided", () => {
+    const result = vendorUnitSchema.safeParse({ ...valid, neighborhood: "" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.neighborhood).toBeUndefined();
+    }
+  });
 });
 
 describe("vendorUnitFormValues", () => {
@@ -203,6 +227,8 @@ describe("vendorUnitFormValues", () => {
     data.append("cuisineCategories", "mexican");
     data.append("cuisineCategories", "american");
     data.set("city", "Austin");
+    data.set("state", "TX");
+    data.set("placeId", "place-1");
     data.set("contactPhoneVisible", "on");
     data.append("paymentMethods", "cash");
     data.set("operatingStatus", "open");
@@ -213,5 +239,7 @@ describe("vendorUnitFormValues", () => {
     expect(values.paymentMethods).toEqual(["cash"]);
     expect(values.contactPhoneVisible).toBe(true);
     expect(values.contactEmailVisible).toBe(false);
+    expect(values.state).toBe("TX");
+    expect(values.placeId).toBe("place-1");
   });
 });

@@ -35,6 +35,9 @@ const GENERIC_AUTH_ERROR =
 /**
  * Create account with email + password. Email verification is required
  * before sign-in (configured in Supabase); we redirect to /verify-email.
+ * A duplicate email is surfaced directly ("This email is already in use")
+ * rather than silently redirecting as if a new account were created —
+ * a deliberate UX choice over the stricter anti-enumeration default.
  */
 export async function signUpAction(
   _prev: ActionState,
@@ -64,16 +67,19 @@ export async function signUpAction(
   });
 
   if (error) {
-    // Do not reveal whether the email is already registered.
     if (error.code === "weak_password") {
       return errorState("Please choose a stronger password.", {
         password: [error.message],
       });
     }
-    console.error("sign-up failed", { code: error.code });
     if (error.code === "user_already_exists" || error.status === 422) {
-      redirect(`/verify-email?email=${encodeURIComponent(parsed.data.email)}`);
+      return errorState("This email is already in use.", {
+        email: [
+          "This email is already in use. Sign in instead, or use a different email.",
+        ],
+      });
     }
+    console.error("sign-up failed", { code: error.code });
     return errorState(GENERIC_AUTH_ERROR);
   }
 
@@ -179,9 +185,12 @@ export async function resetPasswordAction(
 
   if (error) {
     if (error.code === "same_password") {
-      return errorState("Choose a password you have not used before.", {
-        password: ["New password must be different from the current one."],
-      });
+      return errorState(
+        "Choose a password different from your current password.",
+        {
+          password: ["New password must be different from the current one."],
+        },
+      );
     }
     console.error("password update failed", { code: error.code });
     return errorState(GENERIC_AUTH_ERROR);
@@ -271,9 +280,12 @@ export async function changePasswordAction(
 
   if (error) {
     if (error.code === "same_password") {
-      return errorState("Choose a password you have not used before.", {
-        password: ["New password must be different from the current one."],
-      });
+      return errorState(
+        "Choose a password different from your current password.",
+        {
+          password: ["New password must be different from the current one."],
+        },
+      );
     }
     console.error("password change failed", { code: error.code });
     return errorState(GENERIC_AUTH_ERROR);

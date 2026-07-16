@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { VendorUnit } from "@/lib/supabase/database.types";
@@ -23,13 +24,30 @@ import {
   MAX_CUISINE_ENTRIES,
   OPERATING_STATUSES,
   PAYMENT_METHODS,
+  US_STATES,
   VENDOR_UNIT_TYPES,
+  labelFor,
   suggestSlug,
 } from "@/features/vendors/schemas";
 
 const PREDEFINED_CUISINE_VALUES = new Set(
   CUISINE_CATEGORIES.map((c) => c.value),
 );
+const US_STATE_VALUES = new Set(US_STATES.map((s) => s.value));
+
+type CitySuggestion = { placeId: string; description: string };
+
+/**
+ * Best-effort client-side guess at the state from an autocomplete
+ * description like "Austin, TX, USA" — purely a UX convenience so the
+ * State dropdown pre-fills; the actual state the vendor picks (and
+ * re-verification against the selected placeId) is what gets saved.
+ */
+function guessStateFromDescription(description: string): string | null {
+  const parts = description.split(",").map((p) => p.trim());
+  const candidate = parts.find((p) => US_STATE_VALUES.has(p.toUpperCase()));
+  return candidate ? candidate.toUpperCase() : null;
+}
 
 /** A single choice pill: a visually hidden native input inside a styled label. */
 function OptionPill({
@@ -82,9 +100,48 @@ export function VendorUnitForm({
     idleState,
   );
 
+  // React (and/or the browser) resets native checked/radio inputs after a
+  // form action round-trip even though the controlled `checked` prop is
+  // unchanged from React's point of view, so it isn't reapplied to the
+  // DOM — pills silently show as unselected after a failed submission
+  // even though the underlying state (and a corrected resubmission) is
+  // still correct. Remounting the pill inputs whenever a new action
+  // response arrives forces their checked state to be freshly written
+  // from current props. Adjusted during render (not an effect) per
+  // https://react.dev/learn/you-might-not-need-an-effect.
+  const [prevState, setPrevState] = React.useState(state);
+  const [formVersion, setFormVersion] = React.useState(0);
+  if (state !== prevState) {
+    setPrevState(state);
+    setFormVersion((v) => v + 1);
+  }
+
+  const [name, setName] = React.useState(initialUnit?.name ?? "");
   const [slug, setSlug] = React.useState(initialUnit?.slug ?? "");
   const [slugEditable, setSlugEditable] = React.useState(false);
   const [unitType, setUnitType] = React.useState(initialUnit?.unit_type ?? "");
+  const [description, setDescription] = React.useState(
+    initialUnit?.description ?? "",
+  );
+  const [city, setCity] = React.useState(initialUnit?.city ?? "");
+  const [unitState, setUnitState] = React.useState(initialUnit?.state ?? "");
+  const [neighborhood, setNeighborhood] = React.useState(
+    initialUnit?.neighborhood ?? "",
+  );
+  const [placeId, setPlaceId] = React.useState("");
+  const [citySuggestions, setCitySuggestions] = React.useState<
+    CitySuggestion[]
+  >([]);
+  const [showCitySuggestions, setShowCitySuggestions] = React.useState(false);
+  const cityDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [contactPhone, setContactPhone] = React.useState(
+    initialUnit?.contact_phone ?? "",
+  );
+  const [contactEmail, setContactEmail] = React.useState(
+    initialUnit?.contact_email ?? "",
+  );
   const [operatingStatus, setOperatingStatus] = React.useState(
     initialUnit?.operating_status ?? "open",
   );
@@ -138,8 +195,67 @@ export function VendorUnitForm({
     setCustomCuisineInput("");
   }
 
+  function handleCityChange(value: string) {
+    setCity(value);
+    setPlaceId("");
+    if (cityDebounceRef.current) {
+      clearTimeout(cityDebounceRef.current);
+    }
+    if (value.trim().length < 2) {
+      setCitySuggestions([]);
+      setShowCitySuggestions(false);
+      return;
+    }
+    cityDebounceRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/geocoding/city-autocomplete?q=${encodeURIComponent(value)}`,
+        );
+        const data = (await response.json()) as {
+          configured?: boolean;
+          suggestions?: CitySuggestion[];
+        };
+        const suggestions = data.suggestions ?? [];
+        setCitySuggestions(suggestions);
+        setShowCitySuggestions(suggestions.length > 0);
+      } catch {
+        setCitySuggestions([]);
+        setShowCitySuggestions(false);
+      }
+    }, 300);
+  }
+
+  function selectCitySuggestion(suggestion: CitySuggestion) {
+    setCity(suggestion.description);
+    setPlaceId(suggestion.placeId);
+    setCitySuggestions([]);
+    setShowCitySuggestions(false);
+    const guessedState = guessStateFromDescription(suggestion.description);
+    if (guessedState) {
+      setUnitState(guessedState);
+    }
+  }
+
   return (
-    <form action={formAction} className="space-y-6" noValidate>
+    <form
+      action={formAction}
+      className="space-y-6"
+      noValidate
+      onKeyDown={(event) => {
+        // Prevent Enter in any single-line field from prematurely
+        // submitting the form before every required field is filled in —
+        // easy to trigger by habit while tabbing through a long form.
+        const target = event.target;
+        if (
+          event.key === "Enter" &&
+          target instanceof HTMLElement &&
+          target.tagName !== "TEXTAREA" &&
+          target.tagName !== "BUTTON"
+        ) {
+          event.preventDefault();
+        }
+      }}
+    >
       {state.status === "error" && state.message ? (
         <Alert variant="destructive">
           <AlertCircle aria-hidden="true" />
@@ -157,9 +273,10 @@ export function VendorUnitForm({
           id="name"
           name="name"
           placeholder="Maria's Taco Cart"
-          defaultValue={initialUnit?.name}
+          value={name}
           required
           onChange={(event) => {
+            setName(event.target.value);
             if (!slugEditable) {
               setSlug(suggestSlug(event.target.value));
             }
@@ -215,7 +332,7 @@ export function VendorUnitForm({
         <div className="flex flex-wrap gap-2">
           {VENDOR_UNIT_TYPES.map((option) => (
             <OptionPill
-              key={option.value}
+              key={`${option.value}-${formVersion}`}
               type="radio"
               name="unitType"
               value={option.value}
@@ -235,7 +352,8 @@ export function VendorUnitForm({
           name="description"
           placeholder="What makes your food worth the stop?"
           maxLength={280}
-          defaultValue={initialUnit?.description}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
           aria-describedby="description-error"
           aria-invalid={Boolean(state.fieldErrors?.description)}
         />
@@ -250,7 +368,7 @@ export function VendorUnitForm({
         <div className="flex flex-wrap gap-2">
           {CUISINE_CATEGORIES.map((option) => (
             <OptionPill
-              key={option.value}
+              key={`${option.value}-${formVersion}`}
               type="checkbox"
               name="cuisineCategories"
               value={option.value}
@@ -275,6 +393,28 @@ export function VendorUnitForm({
             Other
           </button>
         </div>
+
+        {cuisineCategories.length > 0 || customCuisines.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-xs text-muted-foreground">Selected:</span>
+            {cuisineCategories.map((value) => (
+              <span
+                key={value}
+                className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+              >
+                {labelFor(CUISINE_CATEGORIES, value)}
+              </span>
+            ))}
+            {customCuisines.map((cuisine) => (
+              <span
+                key={cuisine}
+                className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+              >
+                {cuisine}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         {showCustomCuisine ? (
           <div className="space-y-2 pt-1">
@@ -341,18 +481,81 @@ export function VendorUnitForm({
         />
       </fieldset>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="relative space-y-2">
+          <Label htmlFor="city">City</Label>
+          <Input
+            id="city"
+            name="city"
+            placeholder="Start typing your city…"
+            value={city}
+            onChange={(event) => handleCityChange(event.target.value)}
+            onBlur={() => setTimeout(() => setShowCitySuggestions(false), 150)}
+            onFocus={() => setShowCitySuggestions(citySuggestions.length > 0)}
+            autoComplete="off"
+            required
+            aria-describedby="city-error"
+            aria-invalid={Boolean(state.fieldErrors?.city)}
+          />
+          <input type="hidden" name="placeId" value={placeId} />
+          {showCitySuggestions ? (
+            <ul className="absolute z-10 mt-1 w-full rounded-md border border-input bg-background shadow-md">
+              {citySuggestions.map((suggestion) => (
+                <li key={suggestion.placeId}>
+                  <button
+                    type="button"
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectCitySuggestion(suggestion)}
+                  >
+                    {suggestion.description}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <FieldError id="city-error" errors={state.fieldErrors?.city} />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="state">State</Label>
+          <Select
+            id="state"
+            name="state"
+            value={unitState}
+            onChange={(event) => setUnitState(event.target.value)}
+            required
+            aria-describedby="state-error"
+            aria-invalid={Boolean(state.fieldErrors?.state)}
+          >
+            <option value="">Choose a state</option>
+            {US_STATES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+          <FieldError id="state-error" errors={state.fieldErrors?.state} />
+        </div>
+      </div>
+
       <div className="space-y-2">
-        <Label htmlFor="city">City</Label>
+        <Label htmlFor="neighborhood">
+          Neighborhood / service area (optional)
+        </Label>
         <Input
-          id="city"
-          name="city"
-          placeholder="Austin"
-          defaultValue={initialUnit?.city}
-          required
-          aria-describedby="city-error"
-          aria-invalid={Boolean(state.fieldErrors?.city)}
+          id="neighborhood"
+          name="neighborhood"
+          placeholder="e.g. Downtown or East Side food truck park"
+          value={neighborhood}
+          onChange={(event) => setNeighborhood(event.target.value)}
+          aria-describedby="neighborhood-error"
+          aria-invalid={Boolean(state.fieldErrors?.neighborhood)}
         />
-        <FieldError id="city-error" errors={state.fieldErrors?.city} />
+        <FieldError
+          id="neighborhood-error"
+          errors={state.fieldErrors?.neighborhood}
+        />
       </div>
 
       <fieldset className="space-y-3">
@@ -369,7 +572,8 @@ export function VendorUnitForm({
               name="contactPhone"
               type="tel"
               placeholder="(555) 555-0100"
-              defaultValue={initialUnit?.contact_phone ?? ""}
+              value={contactPhone}
+              onChange={(event) => setContactPhone(event.target.value)}
               aria-describedby="contactPhone-error"
               aria-invalid={Boolean(state.fieldErrors?.contactPhone)}
             />
@@ -379,6 +583,7 @@ export function VendorUnitForm({
             />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <input
+                key={`contactPhoneVisible-${formVersion}`}
                 type="checkbox"
                 name="contactPhoneVisible"
                 checked={contactPhoneVisible}
@@ -396,7 +601,8 @@ export function VendorUnitForm({
               name="contactEmail"
               type="email"
               placeholder="hello@example.com"
-              defaultValue={initialUnit?.contact_email ?? ""}
+              value={contactEmail}
+              onChange={(event) => setContactEmail(event.target.value)}
               aria-describedby="contactEmail-error"
               aria-invalid={Boolean(state.fieldErrors?.contactEmail)}
             />
@@ -406,6 +612,7 @@ export function VendorUnitForm({
             />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <input
+                key={`contactEmailVisible-${formVersion}`}
                 type="checkbox"
                 name="contactEmailVisible"
                 checked={contactEmailVisible}
@@ -425,7 +632,7 @@ export function VendorUnitForm({
         <div className="flex flex-wrap gap-2">
           {PAYMENT_METHODS.map((option) => (
             <OptionPill
-              key={option.value}
+              key={`${option.value}-${formVersion}`}
               type="checkbox"
               name="paymentMethods"
               value={option.value}
@@ -448,7 +655,7 @@ export function VendorUnitForm({
         <div className="flex flex-wrap gap-2">
           {OPERATING_STATUSES.map((option) => (
             <OptionPill
-              key={option.value}
+              key={`${option.value}-${formVersion}`}
               type="radio"
               name="operatingStatus"
               value={option.value}

@@ -82,6 +82,26 @@ describe("signUpAction", () => {
       expect.objectContaining({ email: "maria@example.com" }),
     );
   });
+
+  it("tells the user directly when the email is already registered", async () => {
+    const client = useSupabase({ user: null });
+    client.auth.signUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: { code: "user_already_exists", status: 422, message: "..." },
+    });
+
+    const state = await signUpAction(
+      idleState,
+      form({
+        displayName: "Maria",
+        email: "maria@example.com",
+        password: "a-strong-password",
+      }),
+    );
+
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.email?.[0]).toMatch(/already in use/i);
+  });
 });
 
 describe("signInAction (open redirect protection)", () => {

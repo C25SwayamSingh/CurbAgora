@@ -37,6 +37,7 @@ export function VendorUnitCard({
         </CardTitle>
         <CardDescription>
           {labelFor(VENDOR_UNIT_TYPES, unit.unit_type)} · {unit.city}
+          {unit.state ? `, ${unit.state}` : ""}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

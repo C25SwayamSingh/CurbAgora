@@ -14,10 +14,16 @@ const redirectMock = vi.hoisted(() =>
   }),
 );
 const createServerClientMock = vi.hoisted(() => vi.fn());
+const shouldVerifyCityMock = vi.hoisted(() => vi.fn(() => false));
+const verifyCityPlaceMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 vi.mock("@/lib/supabase/server", () => ({
   createServerClient: createServerClientMock,
+}));
+vi.mock("@/lib/geocoding/google-places", () => ({
+  shouldVerifyCity: shouldVerifyCityMock,
+  verifyCityPlace: verifyCityPlaceMock,
 }));
 
 import {
@@ -68,6 +74,7 @@ const validForm = {
   description: "Tacos and more.",
   cuisineCategories: ["mexican", "american"],
   city: "Austin",
+  state: "TX",
   contactPhone: "",
   contactEmail: "",
   paymentMethods: ["cash", "credit_card"],
@@ -76,6 +83,7 @@ const validForm = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  shouldVerifyCityMock.mockReturnValue(false);
 });
 
 describe("createVendorUnitAction", () => {
@@ -245,6 +253,68 @@ describe("createVendorUnitAction", () => {
     const state = await createVendorUnitAction(idleState, form(validForm));
     expect(state.status).toBe("error");
     expect(state.message).not.toMatch(/permission denied/i);
+  });
+
+  it("skips city verification when not configured (e.g. local dev)", async () => {
+    shouldVerifyCityMock.mockReturnValue(false);
+    const client = useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+    });
+    await expect(
+      createVendorUnitAction(idleState, form(validForm)),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(verifyCityPlaceMock).not.toHaveBeenCalled();
+    expect(client.vendorUnitInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires a selected placeId when city verification is enabled", async () => {
+    shouldVerifyCityMock.mockReturnValue(true);
+    const client = useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+    });
+    const state = await createVendorUnitAction(idleState, form(validForm));
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.city).toBeDefined();
+    expect(client.vendorUnitInsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a city whose verified state does not match the submitted state", async () => {
+    shouldVerifyCityMock.mockReturnValue(true);
+    verifyCityPlaceMock.mockResolvedValue({ city: "Austin", state: "TX" });
+    const client = useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+    });
+    const state = await createVendorUnitAction(
+      idleState,
+      form({ ...validForm, placeId: "place-1", state: "CA" }),
+    );
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.city).toBeDefined();
+    expect(client.vendorUnitInsert).not.toHaveBeenCalled();
+  });
+
+  it("creates the unit once the placeId verifies against the submitted city/state", async () => {
+    shouldVerifyCityMock.mockReturnValue(true);
+    verifyCityPlaceMock.mockResolvedValue({ city: "Austin", state: "TX" });
+    const client = useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+    });
+    await expect(
+      createVendorUnitAction(
+        idleState,
+        form({ ...validForm, placeId: "place-1" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(verifyCityPlaceMock).toHaveBeenCalledWith("place-1");
+    expect(client.vendorUnitInsert).toHaveBeenCalledTimes(1);
   });
 });
 

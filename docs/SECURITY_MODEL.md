@@ -16,6 +16,8 @@ These variables may be prefixed with `NEXT_PUBLIC_` and referenced from client b
 These must **never** be imported into client components or exposed via `NEXT_PUBLIC_`:
 
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `GOOGLE_PLACES_API_KEY` — used server-side only (`src/lib/geocoding/google-places.ts`)
+  to verify a vendor's city/state via a proxied API route; never sent to the browser
 - Any payment provider secret keys (future phase)
 - Any SMS provider credentials (future phase)
 
