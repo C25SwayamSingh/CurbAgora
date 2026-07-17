@@ -575,8 +575,16 @@ select is(
   'is_platform_admin() reflects service-role-granted admin status once aal2'
 );
 
+-- Scoped to this file's own fixture slugs (taco-cart, customer-org,
+-- burger-truck, cust-org-2) rather than a global count — an admin
+-- session bypasses RLS entirely, so an unscoped count(*) also picks up
+-- any organizations left over from manual testing in this database and
+-- fails nondeterministically. The proof this assertion cares about (the
+-- admin bypass crosses tenants) only requires that all four fixture orgs
+-- — created under three different users above — are visible here.
 select is(
-  (select count(*)::int from public.organizations),
+  (select count(*)::int from public.organizations
+    where slug in ('taco-cart', 'customer-org', 'burger-truck', 'cust-org-2')),
   4,
   'AAL2 platform admin can read all organizations'
 );

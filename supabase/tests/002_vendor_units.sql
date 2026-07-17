@@ -225,8 +225,15 @@ select is(
 -- Viewing: the public preview view is the only anonymous read path
 -- ----------------------------------------------------------------------------
 
+-- Scoped to this file's own fixture organizations — vendor_unit_previews
+-- is a public, unauthenticated read path with no membership filtering,
+-- so an unscoped count(*) also picks up any vendor units left over from
+-- manual testing in this database and fails nondeterministically.
 select is(
-  (select count(*)::int from public.vendor_unit_previews),
+  (select count(*)::int from public.vendor_unit_previews
+    where organization_id in (
+      '10000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002')),
   3,
   'anon sees all three vendor units (two orgs) through the public preview view'
 );
@@ -293,8 +300,12 @@ where slug = 'burger-truck';
 
 select test_as_anon();
 
+-- Same scoping rationale as the count(*) assertion above.
 select is(
-  (select count(*)::int from public.vendor_unit_previews),
+  (select count(*)::int from public.vendor_unit_previews
+    where organization_id in (
+      '10000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002')),
   2,
   'a suspended organization''s vendor units are excluded from the public view'
 );
