@@ -24,28 +24,43 @@ export default async function VendorDashboardPage() {
 
   const supabase = await createServerClient();
 
-  const [{ data: organization }, { data: members }, { data: vendorUnits }] =
-    await Promise.all([
-      supabase
-        .from("organizations")
-        .select("*")
-        .eq("id", ctx.membership.organization_id)
-        .maybeSingle(),
-      supabase
-        .from("organization_members")
-        .select("*")
-        .eq("organization_id", ctx.membership.organization_id)
-        .order("created_at"),
-      supabase
-        .from("vendor_units")
-        .select("*")
-        .eq("organization_id", ctx.membership.organization_id)
-        .order("created_at"),
-    ]);
+  const [
+    { data: organization },
+    { data: members },
+    { data: vendorUnits },
+    { data: openLocationSessions },
+  ] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("*")
+      .eq("id", ctx.membership.organization_id)
+      .maybeSingle(),
+    supabase
+      .from("organization_members")
+      .select("*")
+      .eq("organization_id", ctx.membership.organization_id)
+      .order("created_at"),
+    supabase
+      .from("vendor_units")
+      .select("*")
+      .eq("organization_id", ctx.membership.organization_id)
+      .order("created_at"),
+    supabase
+      .from("vendor_location_sessions")
+      .select("*")
+      .eq("organization_id", ctx.membership.organization_id)
+      .is("ended_at", null),
+  ]);
 
   const isLeadership = isMfaMandatoryRole(ctx.membership.role);
   const canManageUnit =
     ctx.membership.role === "owner" || ctx.membership.role === "manager";
+  const openLocationSessionsByUnitId = Object.fromEntries(
+    (openLocationSessions ?? []).map((session) => [
+      session.vendor_unit_id,
+      session,
+    ]),
+  );
 
   return (
     <AuthenticatedAppShell>
@@ -171,6 +186,8 @@ export default async function VendorDashboardPage() {
             units={vendorUnits ?? []}
             organizationSlug={organization.slug}
             canManage={canManageUnit}
+            canManageLocation
+            openLocationSessionsByUnitId={openLocationSessionsByUnitId}
           />
         ) : null}
 
@@ -178,8 +195,8 @@ export default async function VendorDashboardPage() {
           <CardHeader>
             <CardTitle>Next up for your business</CardTitle>
             <CardDescription>
-              Menus, live locations, and customer reviews are planned for
-              upcoming phases — they are not available yet.
+              Menus and customer reviews are planned for upcoming phases — they
+              are not available yet.
             </CardDescription>
           </CardHeader>
           <CardContent>

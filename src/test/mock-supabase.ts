@@ -41,6 +41,12 @@ export type MockUserConfig = {
   vendorUnitUpdateError?: { code?: string; message: string } | null;
   /** When true, vendor_units update succeeds but matches no row. */
   vendorUnitUpdateMissing?: boolean;
+  /** Force vendor_location_sessions insert to fail with this error. */
+  locationSessionInsertError?: { code?: string; message: string } | null;
+  /** Force vendor_location_sessions update to fail with this error. */
+  locationSessionUpdateError?: { code?: string; message: string } | null;
+  /** When true, vendor_location_sessions update succeeds but matches no row. */
+  locationSessionUpdateMissing?: boolean;
 };
 
 function thenable(data: unknown) {
@@ -79,6 +85,9 @@ export function createMockSupabase(config: MockUserConfig) {
     vendorUnitInsertError = null,
     vendorUnitUpdateError = null,
     vendorUnitUpdateMissing = false,
+    locationSessionInsertError = null,
+    locationSessionUpdateError = null,
+    locationSessionUpdateMissing = false,
   } = config;
 
   type MockError = { code?: string; message: string; status?: number } | null;
@@ -132,6 +141,34 @@ export function createMockSupabase(config: MockUserConfig) {
       : vendorUnitUpdateMissing
         ? { data: null, error: null }
         : { data: { id: vendorUnit?.id ?? "unit-1" }, error: null };
+
+    const builder = {
+      eq: () => builder,
+      select: () => builder,
+      maybeSingle: async () => updateResult,
+      then: (resolve: (value: typeof updateResult) => void) =>
+        resolve(updateResult),
+    };
+    return builder;
+  });
+
+  const locationSessionInsertPayloads: unknown[] = [];
+  const locationSessionInsert = vi.fn((payload: unknown) => {
+    locationSessionInsertPayloads.push(payload);
+    const result = { error: locationSessionInsertError };
+    return {
+      then: (resolve: (value: typeof result) => void) => resolve(result),
+    };
+  });
+
+  const locationSessionUpdatePayloads: unknown[] = [];
+  const locationSessionUpdate = vi.fn((payload: unknown) => {
+    locationSessionUpdatePayloads.push(payload);
+    const updateResult = locationSessionUpdateError
+      ? { data: null, error: locationSessionUpdateError }
+      : locationSessionUpdateMissing
+        ? { data: null, error: null }
+        : { data: { id: "session-1" }, error: null };
 
     const builder = {
       eq: () => builder,
@@ -226,6 +263,8 @@ export function createMockSupabase(config: MockUserConfig) {
     update,
     vendorUnitInsert,
     vendorUnitUpdate,
+    locationSessionInsert,
+    locationSessionUpdate,
     from: vi.fn((table: string) => {
       if (table === "profiles") {
         const builder = {
@@ -255,6 +294,19 @@ export function createMockSupabase(config: MockUserConfig) {
             resolve({ data: vendorUnits, error: null }),
           insert: vendorUnitInsert,
           update: vendorUnitUpdate,
+        };
+        return builder;
+      }
+      if (table === "vendor_location_sessions") {
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          order: () => builder,
+          maybeSingle: async () => ({ data: null, error: null }),
+          then: (resolve: (value: { data: unknown; error: null }) => void) =>
+            resolve({ data: [], error: null }),
+          insert: locationSessionInsert,
+          update: locationSessionUpdate,
         };
         return builder;
       }

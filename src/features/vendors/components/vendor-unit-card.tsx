@@ -10,7 +10,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { VendorUnit } from "@/lib/supabase/database.types";
+import type {
+  VendorLocationSession,
+  VendorUnit,
+} from "@/lib/supabase/database.types";
+import { VendorLocationControl } from "@/features/vendors/components/vendor-location-control";
 import {
   CUISINE_CATEGORIES,
   OPERATING_STATUSES,
@@ -23,10 +27,15 @@ export function VendorUnitCard({
   unit,
   organizationSlug,
   canManage,
+  canManageLocation,
+  locationSession,
 }: {
   unit: VendorUnit;
   organizationSlug: string;
   canManage: boolean;
+  /** Any active member (owner/manager/staff) may go live — not just canManage. */
+  canManageLocation: boolean;
+  locationSession: VendorLocationSession | null;
 }) {
   return (
     <Card>
@@ -59,6 +68,10 @@ export function VendorUnitCard({
             </dd>
           </div>
         </dl>
+
+        {canManageLocation ? (
+          <VendorLocationControl unitId={unit.id} session={locationSession} />
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           {canManage ? (

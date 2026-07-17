@@ -4,7 +4,8 @@
  * Maintained by hand to mirror
  * `supabase/migrations/20260701000000_auth_tenancy_foundation.sql`,
  * `supabase/migrations/20260706000000_vendor_units.sql`, and later forward
- * migrations (multi-unit slugs, free-form cuisine tags).
+ * migrations (multi-unit slugs, free-form cuisine tags, city/state,
+ * vendor_location_sessions).
  * When a local Supabase stack is available, regenerate with:
  *
  *   supabase gen types typescript --local > src/lib/supabase/database.types.ts
@@ -230,6 +231,54 @@ export type Database = {
         };
         Relationships: [];
       };
+      vendor_location_sessions: {
+        Row: {
+          id: string;
+          vendor_unit_id: string;
+          organization_id: string;
+          latitude: number;
+          longitude: number;
+          public_label: string;
+          started_at: string;
+          expected_end_at: string | null;
+          last_confirmed_at: string;
+          ended_at: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          vendor_unit_id: string;
+          organization_id: string;
+          latitude: number;
+          longitude: number;
+          public_label?: string;
+          started_at?: string;
+          expected_end_at?: string | null;
+          last_confirmed_at?: string;
+          ended_at?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          vendor_unit_id?: string;
+          organization_id?: string;
+          latitude?: number;
+          longitude?: number;
+          public_label?: string;
+          started_at?: string;
+          expected_end_at?: string | null;
+          last_confirmed_at?: string;
+          ended_at?: string | null;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       vendor_unit_previews: {
@@ -253,6 +302,21 @@ export type Database = {
           contact_email: string | null;
           created_at: string;
           updated_at: string;
+        };
+        Relationships: [];
+      };
+      vendor_location_session_previews: {
+        Row: {
+          id: string;
+          vendor_unit_id: string;
+          organization_id: string;
+          organization_slug: string;
+          unit_slug: string;
+          latitude: number;
+          longitude: number;
+          public_label: string;
+          started_at: string;
+          expected_end_at: string | null;
         };
         Relationships: [];
       };
@@ -307,3 +371,7 @@ export type PlatformAdmin =
 export type VendorUnit = Database["public"]["Tables"]["vendor_units"]["Row"];
 export type VendorUnitPreview =
   Database["public"]["Views"]["vendor_unit_previews"]["Row"];
+export type VendorLocationSession =
+  Database["public"]["Tables"]["vendor_location_sessions"]["Row"];
+export type VendorLocationSessionPreview =
+  Database["public"]["Views"]["vendor_location_session_previews"]["Row"];

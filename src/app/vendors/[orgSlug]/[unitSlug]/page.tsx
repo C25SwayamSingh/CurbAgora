@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Mail, MapPin, Phone, Store } from "lucide-react";
+import { ExternalLink, Mail, MapPin, Phone, Store } from "lucide-react";
 
 import { InitialsAvatar } from "@/components/app/initials-avatar";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,22 @@ async function loadUnit(orgSlug: string, unitSlug: string) {
   return unit;
 }
 
+/**
+ * A row here means the unit currently has a genuinely live session — the
+ * view itself filters out ended/stale sessions and units under a
+ * suspended organization, so its mere presence is the "is it live" check.
+ */
+async function loadLiveSession(orgSlug: string, unitSlug: string) {
+  const supabase = await createServerClient();
+  const { data: session } = await supabase
+    .from("vendor_location_session_previews")
+    .select("*")
+    .eq("organization_slug", orgSlug)
+    .eq("unit_slug", unitSlug)
+    .maybeSingle();
+  return session;
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -41,7 +57,10 @@ export default async function VendorPublicPreviewPage({
   params: Promise<{ orgSlug: string; unitSlug: string }>;
 }) {
   const { orgSlug, unitSlug } = await params;
-  const unit = await loadUnit(orgSlug, unitSlug);
+  const [unit, liveSession] = await Promise.all([
+    loadUnit(orgSlug, unitSlug),
+    loadLiveSession(orgSlug, unitSlug),
+  ]);
 
   if (!unit) {
     return (
@@ -103,6 +122,34 @@ export default async function VendorPublicPreviewPage({
           </span>
         </div>
       </div>
+
+      {liveSession ? (
+        <div className="mt-6 rounded-lg border border-brand-fresh/30 bg-brand-fresh/10 p-4">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-brand-fresh">
+            <MapPin className="size-4" aria-hidden="true" />
+            Live now
+          </p>
+          <p className="mt-1 text-sm">{liveSession.public_label}</p>
+          {liveSession.expected_end_at ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Expected until{" "}
+              {new Date(liveSession.expected_end_at).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </p>
+          ) : null}
+          <a
+            href={`https://www.google.com/maps?q=${liveSession.latitude},${liveSession.longitude}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-fresh underline underline-offset-2"
+          >
+            Open in Maps
+            <ExternalLink className="size-3.5" aria-hidden="true" />
+          </a>
+        </div>
+      ) : null}
 
       {unit.description ? (
         <p className="mt-6 text-sm leading-relaxed">{unit.description}</p>

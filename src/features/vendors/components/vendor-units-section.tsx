@@ -9,7 +9,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { VendorUnit } from "@/lib/supabase/database.types";
+import type {
+  VendorLocationSession,
+  VendorUnit,
+} from "@/lib/supabase/database.types";
 import { VendorUnitCard } from "@/features/vendors/components/vendor-unit-card";
 
 /**
@@ -21,10 +24,14 @@ export function VendorUnitsSection({
   units,
   organizationSlug,
   canManage,
+  canManageLocation,
+  openLocationSessionsByUnitId,
 }: {
   units: VendorUnit[];
   organizationSlug: string;
   canManage: boolean;
+  canManageLocation: boolean;
+  openLocationSessionsByUnitId: Record<string, VendorLocationSession>;
 }) {
   if (units.length === 0) {
     return (
@@ -61,6 +68,8 @@ export function VendorUnitsSection({
           unit={unit}
           organizationSlug={organizationSlug}
           canManage={canManage}
+          canManageLocation={canManageLocation}
+          locationSession={openLocationSessionsByUnitId[unit.id] ?? null}
         />
       ))}
       {canManage ? (

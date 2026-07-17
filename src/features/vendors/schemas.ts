@@ -261,3 +261,50 @@ export function vendorUnitFormValues(formData: FormData) {
     operatingStatus: formData.get("operatingStatus"),
   };
 }
+
+/** Shared location fields for starting or updating a "go live" session. */
+const locationSessionFieldsSchema = z.object({
+  latitude: z.coerce
+    .number({ message: "Location is required" })
+    .min(-90)
+    .max(90),
+  longitude: z.coerce
+    .number({ message: "Location is required" })
+    .min(-180)
+    .max(180),
+  publicLabel: z
+    .string()
+    .trim()
+    .min(1, 'Describe where you are, e.g. "Corner of 5th & Main"')
+    .max(140, "Keep it under 140 characters"),
+  expectedEndAt: z.preprocess(
+    emptyToUndefined,
+    z.coerce
+      .date()
+      .refine((d) => d > new Date(), "Expected end time must be in the future")
+      .optional(),
+  ),
+});
+
+export const startLocationSessionSchema = locationSessionFieldsSchema.extend({
+  unitId: z.string().trim().min(1, "Vendor unit is required"),
+});
+
+export const updateLocationSessionSchema = locationSessionFieldsSchema.extend({
+  sessionId: z.string().trim().min(1, "Session is required"),
+});
+
+export const endLocationSessionSchema = z.object({
+  sessionId: z.string().trim().min(1, "Session is required"),
+});
+
+export function locationSessionFormValues(formData: FormData) {
+  return {
+    unitId: formData.get("unitId"),
+    sessionId: formData.get("sessionId"),
+    latitude: formData.get("latitude"),
+    longitude: formData.get("longitude"),
+    publicLabel: formData.get("publicLabel"),
+    expectedEndAt: formData.get("expectedEndAt"),
+  };
+}
