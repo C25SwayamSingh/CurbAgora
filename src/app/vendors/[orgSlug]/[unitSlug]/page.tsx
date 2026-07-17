@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { ExternalLink, Mail, MapPin, Phone, Store } from "lucide-react";
 
 import { InitialsAvatar } from "@/components/app/initials-avatar";
+import { vendorPhotoPublicUrl } from "@/features/vendors/photo";
 import { Button } from "@/components/ui/button";
 import { pageTitle } from "@/lib/app-config";
 import { createServerClient } from "@/lib/supabase/server";
@@ -82,6 +84,7 @@ export default async function VendorPublicPreviewPage({
     OPERATING_STATUSES,
     unit.operating_status,
   );
+  const photoUrl = vendorPhotoPublicUrl(unit.primary_image_path);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-10 sm:py-16">
@@ -91,6 +94,19 @@ export default async function VendorPublicPreviewPage({
       >
         ← CurbAgora
       </Link>
+
+      {photoUrl ? (
+        <div className="relative mt-6 aspect-[2/1] w-full overflow-hidden rounded-xl border border-border">
+          <Image
+            src={photoUrl}
+            alt={`${unit.name} business photo`}
+            fill
+            priority
+            sizes="(max-width: 672px) 100vw, 672px"
+            className="object-cover"
+          />
+        </div>
+      ) : null}
 
       <div className="mt-6 flex items-start gap-4">
         <InitialsAvatar displayName={unit.name} className="size-16 text-lg" />

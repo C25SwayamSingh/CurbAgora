@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
-import { InitialsAvatar } from "@/components/app/initials-avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,6 +14,7 @@ import type {
   VendorUnit,
 } from "@/lib/supabase/database.types";
 import { VendorLocationControl } from "@/features/vendors/components/vendor-location-control";
+import { VendorUnitPhoto } from "@/features/vendors/components/vendor-unit-photo";
 import {
   CUISINE_CATEGORIES,
   OPERATING_STATUSES,
@@ -41,7 +41,11 @@ export function VendorUnitCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-3">
-          <InitialsAvatar displayName={unit.name} className="size-10 text-sm" />
+          <VendorUnitPhoto
+            path={unit.primary_image_path}
+            displayName={unit.name}
+            className="size-10 text-sm"
+          />
           {unit.name}
         </CardTitle>
         <CardDescription>

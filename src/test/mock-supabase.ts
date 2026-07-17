@@ -41,6 +41,10 @@ export type MockUserConfig = {
   vendorUnitUpdateError?: { code?: string; message: string } | null;
   /** When true, vendor_units update succeeds but matches no row. */
   vendorUnitUpdateMissing?: boolean;
+  /** primary_image_path returned by vendor_units updates (simulates an existing photo). */
+  vendorUnitPhotoPath?: string | null;
+  /** Force storage uploads to fail with this error. */
+  storageUploadError?: { message: string } | null;
   /** Force vendor_location_sessions insert to fail with this error. */
   locationSessionInsertError?: { code?: string; message: string } | null;
   /** Force vendor_location_sessions update to fail with this error. */
@@ -85,6 +89,8 @@ export function createMockSupabase(config: MockUserConfig) {
     vendorUnitInsertError = null,
     vendorUnitUpdateError = null,
     vendorUnitUpdateMissing = false,
+    vendorUnitPhotoPath = null,
+    storageUploadError = null,
     locationSessionInsertError = null,
     locationSessionUpdateError = null,
     locationSessionUpdateMissing = false,
@@ -127,10 +133,15 @@ export function createMockSupabase(config: MockUserConfig) {
   const vendorUnitInsertPayloads: unknown[] = [];
   const vendorUnitInsert = vi.fn((payload: unknown) => {
     vendorUnitInsertPayloads.push(payload);
-    const result = { error: vendorUnitInsertError };
-    return {
+    const result = vendorUnitInsertError
+      ? { data: null, error: vendorUnitInsertError }
+      : { data: { id: "unit-new" }, error: null };
+    const builder = {
+      select: () => builder,
+      single: async () => result,
       then: (resolve: (value: typeof result) => void) => resolve(result),
     };
+    return builder;
   });
 
   const vendorUnitUpdatePayloads: unknown[] = [];
@@ -140,7 +151,13 @@ export function createMockSupabase(config: MockUserConfig) {
       ? { data: null, error: vendorUnitUpdateError }
       : vendorUnitUpdateMissing
         ? { data: null, error: null }
-        : { data: { id: vendorUnit?.id ?? "unit-1" }, error: null };
+        : {
+            data: {
+              id: vendorUnit?.id ?? "unit-1",
+              primary_image_path: vendorUnitPhotoPath,
+            },
+            error: null,
+          };
 
     const builder = {
       eq: () => builder,
@@ -180,7 +197,27 @@ export function createMockSupabase(config: MockUserConfig) {
     return builder;
   });
 
+  const storageUpload = vi.fn<
+    (
+      path: string,
+      file: unknown,
+      options?: unknown,
+    ) => Promise<{ data: unknown; error: MockError }>
+  >(async (path) =>
+    storageUploadError
+      ? { data: null, error: storageUploadError }
+      : { data: { path }, error: null },
+  );
+  const storageRemove = vi.fn<
+    (paths: string[]) => Promise<{ data: unknown; error: MockError }>
+  >(async () => ({ data: [], error: null }));
+
   const client = {
+    storage: {
+      from: vi.fn(() => ({ upload: storageUpload, remove: storageRemove })),
+    },
+    storageUpload,
+    storageRemove,
     auth: {
       getUser: vi.fn(async () =>
         user

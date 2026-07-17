@@ -30,6 +30,7 @@ import {
   createVendorUnitAction,
   updateVendorUnitAction,
 } from "@/features/vendors/actions";
+import { VENDOR_PHOTO_MAX_BYTES } from "@/features/vendors/photo";
 import { idleState } from "@/features/authentication/action-state";
 
 function useSupabase(config: MockUserConfig) {
@@ -38,7 +39,7 @@ function useSupabase(config: MockUserConfig) {
   return client;
 }
 
-function form(entries: Record<string, string | string[]>) {
+function form(entries: Record<string, string | string[] | File>) {
   const data = new FormData();
   for (const [key, value] of Object.entries(entries)) {
     if (Array.isArray(value)) {
@@ -48,6 +49,10 @@ function form(entries: Record<string, string | string[]>) {
     }
   }
   return data;
+}
+
+function photoFile(type = "image/jpeg", bytes = 1024, name = "photo.jpg") {
+  return new File([new Uint8Array(bytes)], name, { type });
 }
 
 const user = { id: "user-1", email: "vendor@example.com" };
@@ -434,5 +439,162 @@ describe("updateVendorUnitAction", () => {
     const state = await updateVendorUnitAction(idleState, form(formWithUnitId));
     expect(state.status).toBe("error");
     expect(state.message).not.toMatch(/permission denied/i);
+  });
+});
+
+describe("vendor unit photos", () => {
+  const owner = () => ({
+    user,
+    profile: vendorProfile,
+    memberships: [membership("owner")],
+  });
+  const formWithUnitId = { ...validForm, unitId: "unit-1" };
+
+  it("create: rejects a non-image file as a field error, before any insert", async () => {
+    const client = useSupabase(owner());
+    const state = await createVendorUnitAction(
+      idleState,
+      form({ ...validForm, photo: photoFile("application/pdf") }),
+    );
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.photo).toBeDefined();
+    expect(client.vendorUnitInsert).not.toHaveBeenCalled();
+    expect(client.storageUpload).not.toHaveBeenCalled();
+  });
+
+  it("create: rejects an oversized photo as a field error", async () => {
+    const client = useSupabase(owner());
+    const state = await createVendorUnitAction(
+      idleState,
+      form({
+        ...validForm,
+        photo: photoFile("image/jpeg", VENDOR_PHOTO_MAX_BYTES + 1),
+      }),
+    );
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.photo).toBeDefined();
+    expect(client.vendorUnitInsert).not.toHaveBeenCalled();
+  });
+
+  it("create: uploads a valid photo under the org/unit path and points the unit at it", async () => {
+    const client = useSupabase(owner());
+    await expect(
+      createVendorUnitAction(
+        idleState,
+        form({ ...validForm, photo: photoFile("image/png") }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.storageUpload).toHaveBeenCalledTimes(1);
+    const uploadPath = client.storageUpload.mock.calls[0]![0] as string;
+    expect(uploadPath).toMatch(/^org-1\/unit-new\/photo-[0-9a-f-]+\.png$/);
+    const pathUpdate = client.vendorUnitUpdate.mock.calls[0]![0] as Record<
+      string,
+      unknown
+    >;
+    expect(pathUpdate.primary_image_path).toBe(uploadPath);
+  });
+
+  it("create: a zero-byte (untouched) file input is treated as no photo", async () => {
+    const client = useSupabase(owner());
+    await expect(
+      createVendorUnitAction(
+        idleState,
+        form({
+          ...validForm,
+          photo: new File([], "", { type: "application/octet-stream" }),
+        }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.storageUpload).not.toHaveBeenCalled();
+  });
+
+  it("create: a failed upload still creates the unit (logged, not fatal)", async () => {
+    const client = useSupabase({
+      ...owner(),
+      storageUploadError: { message: "bucket on fire" },
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    await expect(
+      createVendorUnitAction(
+        idleState,
+        form({ ...validForm, photo: photoFile() }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.vendorUnitInsert).toHaveBeenCalledTimes(1);
+    expect(client.vendorUnitUpdate).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("update: replaces the photo and removes the previous object", async () => {
+    const client = useSupabase({
+      ...owner(),
+      vendorUnitPhotoPath: "org-1/unit-1/photo-old.jpg",
+    });
+    await expect(
+      updateVendorUnitAction(
+        idleState,
+        form({ ...formWithUnitId, photo: photoFile("image/webp") }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.storageUpload).toHaveBeenCalledTimes(1);
+    const uploadPath = client.storageUpload.mock.calls[0]![0] as string;
+    expect(uploadPath).toMatch(/^org-1\/unit-1\/photo-[0-9a-f-]+\.webp$/);
+    expect(client.storageRemove).toHaveBeenCalledWith([
+      "org-1/unit-1/photo-old.jpg",
+    ]);
+  });
+
+  it("update: a failed upload keeps the old photo and reports the error", async () => {
+    const client = useSupabase({
+      ...owner(),
+      vendorUnitPhotoPath: "org-1/unit-1/photo-old.jpg",
+      storageUploadError: { message: "bucket on fire" },
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const state = await updateVendorUnitAction(
+      idleState,
+      form({ ...formWithUnitId, photo: photoFile() }),
+    );
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.photo).toBeDefined();
+    expect(state.message).not.toMatch(/bucket on fire/i);
+    expect(client.storageRemove).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("update: removePhoto clears the path and deletes the object", async () => {
+    const client = useSupabase({
+      ...owner(),
+      vendorUnitPhotoPath: "org-1/unit-1/photo-old.jpg",
+    });
+    await expect(
+      updateVendorUnitAction(
+        idleState,
+        form({ ...formWithUnitId, removePhoto: "true" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    const clearPayload = client.vendorUnitUpdate.mock.calls
+      .map((call) => call[0] as Record<string, unknown>)
+      .find((payload) => "primary_image_path" in payload);
+    expect(clearPayload?.primary_image_path).toBeNull();
+    expect(client.storageRemove).toHaveBeenCalledWith([
+      "org-1/unit-1/photo-old.jpg",
+    ]);
+  });
+
+  it("update: removePhoto with no existing photo touches nothing in storage", async () => {
+    const client = useSupabase(owner());
+    await expect(
+      updateVendorUnitAction(
+        idleState,
+        form({ ...formWithUnitId, removePhoto: "true" }),
+      ),
+    ).rejects.toThrow("REDIRECT:/vendor");
+    expect(client.storageRemove).not.toHaveBeenCalled();
+    expect(client.storageUpload).not.toHaveBeenCalled();
   });
 });

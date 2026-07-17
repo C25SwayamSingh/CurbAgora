@@ -20,6 +20,11 @@ import {
   updateVendorUnitAction,
 } from "@/features/vendors/actions";
 import {
+  VENDOR_PHOTO_ACCEPT,
+  validateVendorPhotoFile,
+  vendorPhotoPublicUrl,
+} from "@/features/vendors/photo";
+import {
   CUISINE_CATEGORIES,
   MAX_CUISINE_ENTRIES,
   OPERATING_STATUSES,
@@ -136,6 +141,52 @@ export function VendorUnitForm({
   const cityDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  // Business photo: the file itself travels in the form submission; this
+  // state only drives the preview and the removePhoto flag. A blob object
+  // URL previews a newly chosen file before it is ever uploaded.
+  const existingPhotoUrl = vendorPhotoPublicUrl(
+    initialUnit?.primary_image_path ?? null,
+  );
+  const [photoPreviewUrl, setPhotoPreviewUrl] = React.useState<string | null>(
+    existingPhotoUrl,
+  );
+  const [photoRemoved, setPhotoRemoved] = React.useState(false);
+  const [photoError, setPhotoError] = React.useState<string | null>(null);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
+
+  function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    setPhotoError(null);
+    if (!file) {
+      setPhotoPreviewUrl(photoRemoved ? null : existingPhotoUrl);
+      return;
+    }
+    const validationError = validateVendorPhotoFile(file);
+    if (validationError) {
+      setPhotoError(validationError);
+      event.target.value = "";
+      setPhotoPreviewUrl(photoRemoved ? null : existingPhotoUrl);
+      return;
+    }
+    if (photoPreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(photoPreviewUrl);
+    }
+    setPhotoPreviewUrl(URL.createObjectURL(file));
+    setPhotoRemoved(false);
+  }
+
+  function handlePhotoRemove() {
+    if (photoInputRef.current) {
+      photoInputRef.current.value = "";
+    }
+    if (photoPreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(photoPreviewUrl);
+    }
+    setPhotoPreviewUrl(null);
+    setPhotoError(null);
+    setPhotoRemoved(true);
+  }
+
   const [contactPhone, setContactPhone] = React.useState(
     initialUnit?.contact_phone ?? "",
   );
@@ -344,6 +395,67 @@ export function VendorUnitForm({
         </div>
         <FieldError id="unitType-error" errors={state.fieldErrors?.unitType} />
       </fieldset>
+
+      <div className="space-y-2">
+        <Label htmlFor="photo">Business photo (optional)</Label>
+        <p className="text-xs text-muted-foreground">
+          Shown on your public page and dashboard. JPEG, PNG, or WebP up to 5MB.
+          Skip it and we&apos;ll show your initials instead.
+        </p>
+        <div className="flex items-center gap-3">
+          {photoPreviewUrl ? (
+            /* Previews a local blob: object URL, which next/image cannot
+               optimize — a plain img is correct here. */
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={photoPreviewUrl}
+              alt="Business photo preview"
+              className="h-20 w-28 shrink-0 rounded-lg border border-border object-cover"
+            />
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => photoInputRef.current?.click()}
+            >
+              {photoPreviewUrl ? "Replace photo" : "Upload photo"}
+            </Button>
+            {photoPreviewUrl ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handlePhotoRemove}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        <input
+          ref={photoInputRef}
+          id="photo"
+          name="photo"
+          type="file"
+          accept={VENDOR_PHOTO_ACCEPT}
+          onChange={handlePhotoChange}
+          className="sr-only"
+          aria-describedby="photo-error"
+          aria-invalid={Boolean(photoError || state.fieldErrors?.photo)}
+        />
+        {isEdit && photoRemoved ? (
+          <input type="hidden" name="removePhoto" value="true" />
+        ) : null}
+        {photoError ? (
+          <p id="photo-error" className="text-sm text-destructive">
+            {photoError}
+          </p>
+        ) : (
+          <FieldError id="photo-error" errors={state.fieldErrors?.photo} />
+        )}
+      </div>
 
       <div className="space-y-2">
         <Label htmlFor="description">Short description</Label>

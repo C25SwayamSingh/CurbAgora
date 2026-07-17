@@ -177,6 +177,8 @@ export type Database = {
           city: string;
           state: string | null;
           neighborhood: string | null;
+          /** Storage object path in the vendor-photos bucket; null = no photo. */
+          primary_image_path: string | null;
           contact_phone: string | null;
           contact_phone_visible: boolean;
           contact_email: string | null;
@@ -198,6 +200,7 @@ export type Database = {
           city: string;
           state?: string | null;
           neighborhood?: string | null;
+          primary_image_path?: string | null;
           contact_phone?: string | null;
           contact_phone_visible?: boolean;
           contact_email?: string | null;
@@ -219,6 +222,7 @@ export type Database = {
           city?: string;
           state?: string | null;
           neighborhood?: string | null;
+          primary_image_path?: string | null;
           contact_phone?: string | null;
           contact_phone_visible?: boolean;
           contact_email?: string | null;
@@ -294,6 +298,8 @@ export type Database = {
           city: string;
           state: string | null;
           neighborhood: string | null;
+          /** Storage object path in the vendor-photos bucket; null = no photo. */
+          primary_image_path: string | null;
           payment_methods: PaymentMethod[];
           operating_status: VendorOperatingStatus;
           /** Null unless the owner/manager set contact_phone_visible. */
