@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 import type {
+  Organization,
   OrganizationMember,
   Profile,
   VendorUnit,
@@ -51,6 +52,10 @@ export type MockUserConfig = {
   locationSessionUpdateError?: { code?: string; message: string } | null;
   /** When true, vendor_location_sessions update succeeds but matches no row. */
   locationSessionUpdateMissing?: boolean;
+  /** Row returned by a single-row organizations select (.maybeSingle()). */
+  organization?: Partial<Organization> | null;
+  /** Force organizations update to fail with this error. */
+  organizationUpdateError?: { code?: string; message: string } | null;
 };
 
 function thenable(data: unknown) {
@@ -94,6 +99,8 @@ export function createMockSupabase(config: MockUserConfig) {
     locationSessionInsertError = null,
     locationSessionUpdateError = null,
     locationSessionUpdateMissing = false,
+    organization = null,
+    organizationUpdateError = null,
   } = config;
 
   type MockError = { code?: string; message: string; status?: number } | null;
@@ -193,6 +200,17 @@ export function createMockSupabase(config: MockUserConfig) {
       maybeSingle: async () => updateResult,
       then: (resolve: (value: typeof updateResult) => void) =>
         resolve(updateResult),
+    };
+    return builder;
+  });
+
+  const organizationUpdatePayloads: unknown[] = [];
+  const organizationUpdate = vi.fn((payload: unknown) => {
+    organizationUpdatePayloads.push(payload);
+    const result = { error: organizationUpdateError };
+    const builder = {
+      eq: () => builder,
+      then: (resolve: (value: typeof result) => void) => resolve(result),
     };
     return builder;
   });
@@ -302,11 +320,19 @@ export function createMockSupabase(config: MockUserConfig) {
     vendorUnitUpdate,
     locationSessionInsert,
     locationSessionUpdate,
+    organizationUpdate,
     from: vi.fn((table: string) => {
       if (table === "profiles") {
         const builder = {
           ...thenable(profile),
           update,
+        };
+        return builder;
+      }
+      if (table === "organizations") {
+        const builder = {
+          ...thenable(organization),
+          update: organizationUpdate,
         };
         return builder;
       }

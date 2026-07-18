@@ -1,28 +1,42 @@
 @import "tailwindcss";
 
+/*
+ * CurbAgora "urban sunset marketplace" palette.
+ * Brand anchors (see docs/DESIGN_SYSTEM.md):
+ *   mist sage #A2B9A7 · sunset orange #F67E04 · deep teal #31737A
+ *   warm sand #E3D1BA · walnut brown #785F54
+ * Rules that must hold:
+ *   - text on sunset orange is dark ink, never white;
+ *   - orange is reserved for primary actions and live-state emphasis;
+ *   - teal is the brand surface (nav, selected states, secondary actions);
+ *   - --live / --brand / --success are pre-darkened (light mode) or
+ *     pre-brightened (dark mode) so small text stays WCAG AA.
+ */
 :root {
-  --background: oklch(0.985 0.002 106);
-  --foreground: oklch(0.145 0.02 48);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.02 48);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.02 48);
-  --primary: oklch(0.55 0.16 35);
-  --primary-foreground: oklch(0.985 0.002 106);
-  --secondary: oklch(0.94 0.02 95);
-  --secondary-foreground: oklch(0.25 0.03 48);
-  --muted: oklch(0.96 0.01 95);
-  --muted-foreground: oklch(0.45 0.02 48);
-  --accent: oklch(0.92 0.04 85);
-  --accent-foreground: oklch(0.25 0.03 48);
+  --background: #e3d1ba; /* warm sand */
+  --foreground: #29211a; /* warm ink */
+  --card: #faf5ec;
+  --card-foreground: #29211a;
+  --popover: #faf5ec;
+  --popover-foreground: #29211a;
+  --primary: #f67e04; /* sunset orange */
+  --primary-foreground: #241505; /* ink on orange — never white */
+  --secondary: #31737a; /* deep teal */
+  --secondary-foreground: #f6f1e7;
+  --muted: #eddfc9;
+  --muted-foreground: #5c463b; /* deepened walnut, AA on sand */
+  --accent: #c7d6cb; /* light mist sage */
+  --accent-foreground: #21444a;
   --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.985 0.002 106);
-  --border: oklch(0.9 0.01 95);
-  --input: oklch(0.9 0.01 95);
-  --ring: oklch(0.55 0.16 35);
+  --destructive-foreground: #faf5ec;
+  --border: #c8b29a;
+  --input: #c8b29a;
+  --ring: #f67e04;
   --radius: 0.75rem;
-  --brand-warm: oklch(0.72 0.14 55);
-  --brand-fresh: oklch(0.62 0.12 155);
+  --brand: #275c62; /* teal deepened for small text on sand */
+  --brand-foreground: #f6f1e7;
+  --live: #874106; /* burnt sunset — AA (≥4.5) as text even on raw sand */
+  --success: #3e6b4f; /* deep sage green */
 }
 
 @theme inline {
@@ -45,8 +59,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-brand-warm: var(--brand-warm);
-  --color-brand-fresh: var(--brand-fresh);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-live: var(--live);
+  --color-success: var(--success);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius-sm: calc(var(--radius) - 4px);
@@ -55,27 +71,33 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Urban sunset at night: teal-charcoal surfaces, sand-tinted text, the
+   same orange kept for actions and live states. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.145 0.02 48);
-    --foreground: oklch(0.985 0.002 106);
-    --card: oklch(0.18 0.02 48);
-    --card-foreground: oklch(0.985 0.002 106);
-    --popover: oklch(0.18 0.02 48);
-    --popover-foreground: oklch(0.985 0.002 106);
-    --primary: oklch(0.72 0.14 55);
-    --primary-foreground: oklch(0.145 0.02 48);
-    --secondary: oklch(0.25 0.02 48);
-    --secondary-foreground: oklch(0.985 0.002 106);
-    --muted: oklch(0.25 0.02 48);
-    --muted-foreground: oklch(0.7 0.02 95);
-    --accent: oklch(0.28 0.03 48);
-    --accent-foreground: oklch(0.985 0.002 106);
-    --destructive: oklch(0.55 0.22 25);
-    --destructive-foreground: oklch(0.985 0.002 106);
-    --border: oklch(0.28 0.02 48);
-    --input: oklch(0.28 0.02 48);
-    --ring: oklch(0.72 0.14 55);
+    --background: #14232a;
+    --foreground: #efe6d8;
+    --card: #1b2f37;
+    --card-foreground: #efe6d8;
+    --popover: #1b2f37;
+    --popover-foreground: #efe6d8;
+    --primary: #f68b1f;
+    --primary-foreground: #221405;
+    --secondary: #2e6a71;
+    --secondary-foreground: #f2ece1;
+    --muted: #1f3038;
+    --muted-foreground: #c9bba6;
+    --accent: #27423b; /* dark sage */
+    --accent-foreground: #dce7de;
+    --destructive: oklch(0.68 0.19 25);
+    --destructive-foreground: #f7f1e6;
+    --border: #2c4450;
+    --input: #2c4450;
+    --ring: #f68b1f;
+    --brand: #7fb5bc; /* lifted teal for text on dark */
+    --brand-foreground: #10262b;
+    --live: #f68b1f;
+    --success: #8fc1a0;
   }
 }
 

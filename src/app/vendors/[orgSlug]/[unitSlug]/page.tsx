@@ -130,7 +130,7 @@ export default async function VendorPublicPreviewPage({
           <span
             className={
               unit.operating_status === "open"
-                ? "mt-2 inline-block rounded-full bg-brand-fresh/15 px-3 py-1 text-xs font-medium text-brand-fresh"
+                ? "mt-2 inline-block rounded-full bg-live/15 px-3 py-1 text-xs font-medium text-live"
                 : "mt-2 inline-block rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
             }
           >
@@ -140,8 +140,8 @@ export default async function VendorPublicPreviewPage({
       </div>
 
       {liveSession ? (
-        <div className="mt-6 rounded-lg border border-brand-fresh/30 bg-brand-fresh/10 p-4">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-brand-fresh">
+        <div className="mt-6 rounded-lg border border-live/30 bg-live/10 p-4">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-live">
             <MapPin className="size-4" aria-hidden="true" />
             Live now
           </p>
@@ -159,7 +159,7 @@ export default async function VendorPublicPreviewPage({
             href={`https://www.google.com/maps?q=${liveSession.latitude},${liveSession.longitude}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-fresh underline underline-offset-2"
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-live underline underline-offset-2"
           >
             Open in Maps
             <ExternalLink className="size-3.5" aria-hidden="true" />

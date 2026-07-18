@@ -133,6 +133,11 @@ export default async function VendorDashboardPage() {
                   Organization details are unavailable right now.
                 </p>
               )}
+              {organization && ctx.membership.role === "owner" ? (
+                <Button asChild variant="outline" size="sm" className="mt-4">
+                  <Link href="/vendor/organization/edit">Edit</Link>
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
 

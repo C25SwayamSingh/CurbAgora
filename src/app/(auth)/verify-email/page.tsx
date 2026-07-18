@@ -24,10 +24,7 @@ export default async function VerifyEmailPage({
   return (
     <Card>
       <CardHeader>
-        <MailCheck
-          className="mb-2 size-8 text-brand-fresh"
-          aria-hidden="true"
-        />
+        <MailCheck className="mb-2 size-8 text-success" aria-hidden="true" />
         <CardTitle>Check your inbox</CardTitle>
         <CardDescription>
           {email ? (

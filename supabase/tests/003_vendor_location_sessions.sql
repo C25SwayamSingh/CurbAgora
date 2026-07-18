@@ -247,8 +247,15 @@ select is(
 -- Public view: only currently-live sessions (not ended, not stale, active org)
 -- ----------------------------------------------------------------------------
 
+-- Scoped to this file's own fixture organizations — the public view has
+-- no membership filtering, so an unscoped count(*) also picks up any
+-- live sessions left over from manual testing in this database and
+-- fails nondeterministically.
 select is(
-  (select count(*)::int from public.vendor_location_session_previews),
+  (select count(*)::int from public.vendor_location_session_previews
+    where organization_id in (
+      '10000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002')),
   2,
   'anon sees both currently-open, fresh sessions through the public view (the ended taco-cart session does not appear)'
 );
@@ -298,8 +305,12 @@ where slug = 'taco-cart';
 
 select test_as_anon();
 
+-- Same scoping rationale as the count(*) assertion above.
 select is(
-  (select count(*)::int from public.vendor_location_session_previews),
+  (select count(*)::int from public.vendor_location_session_previews
+    where organization_id in (
+      '10000000-0000-0000-0000-000000000001',
+      '10000000-0000-0000-0000-000000000002')),
   0,
   'a suspended organization''s sessions are excluded from the public view even while otherwise live'
 );

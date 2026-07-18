@@ -25,6 +25,10 @@ export const createOrganizationSchema = z.object({
 
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 
+/** Same shape as creation — editing business details reuses every rule. */
+export const updateOrganizationSchema = createOrganizationSchema;
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
+
 /** Derive a URL-safe slug suggestion from a display name. */
 export function suggestSlug(name: string): string {
   return name

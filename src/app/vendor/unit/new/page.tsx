@@ -11,6 +11,7 @@ import {
 import { pageTitle } from "@/lib/app-config";
 import { requireVendorMember } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
+import { isGooglePlacesConfigured } from "@/lib/geocoding/google-places";
 import { VendorUnitForm } from "@/features/vendors/components/vendor-unit-form";
 
 export const metadata: Metadata = {
@@ -43,7 +44,10 @@ export default async function NewVendorUnitPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <VendorUnitForm organizationSlug={organization?.slug ?? ""} />
+            <VendorUnitForm
+              organizationSlug={organization?.slug ?? ""}
+              placesConfigured={isGooglePlacesConfigured()}
+            />
           </CardContent>
         </Card>
       </div>

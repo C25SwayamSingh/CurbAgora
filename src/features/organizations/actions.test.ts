@@ -13,13 +13,18 @@ const redirectMock = vi.hoisted(() =>
   }),
 );
 const createServerClientMock = vi.hoisted(() => vi.fn());
+const revalidatePathMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
+vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 vi.mock("@/lib/supabase/server", () => ({
   createServerClient: createServerClientMock,
 }));
 
-import { createOrganizationAction } from "@/features/organizations/actions";
+import {
+  createOrganizationAction,
+  updateOrganizationAction,
+} from "@/features/organizations/actions";
 import { idleState } from "@/features/authentication/action-state";
 
 function useSupabase(config: MockUserConfig) {
@@ -164,5 +169,131 @@ describe("createOrganizationAction", () => {
     const state = await createOrganizationAction(idleState, form(validForm));
     expect(state.status).toBe("error");
     expect(state.fieldErrors?.slug).toBeDefined();
+  });
+});
+
+function membership(role: "owner" | "manager" | "staff") {
+  return {
+    id: "m-1",
+    organization_id: "org-1",
+    user_id: "user-1",
+    role,
+    status: "active" as const,
+  };
+}
+
+describe("updateOrganizationAction", () => {
+  it("requires authentication", async () => {
+    useSupabase({ user: null });
+    await expect(
+      updateOrganizationAction(idleState, form(validForm)),
+    ).rejects.toThrow("REDIRECT:/sign-in");
+  });
+
+  it("requires an aal2 (MFA-verified) session even for an owner", async () => {
+    useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      currentLevel: "aal1",
+      nextLevel: "aal1",
+    });
+    await expect(
+      updateOrganizationAction(idleState, form(validForm)),
+    ).rejects.toThrow("REDIRECT:/mfa-enroll");
+  });
+
+  it("sends an aal1 owner with a verified factor to the MFA challenge, not straight through", async () => {
+    useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      currentLevel: "aal1",
+      nextLevel: "aal2",
+    });
+    await expect(
+      updateOrganizationAction(idleState, form(validForm)),
+    ).rejects.toThrow("REDIRECT:/mfa-challenge");
+  });
+
+  it.each(["manager", "staff"] as const)(
+    "blocks %s (owner-only)",
+    async (role) => {
+      const client = useSupabase({
+        user,
+        profile: vendorProfile,
+        memberships: [membership(role)],
+        ...aal2,
+      });
+      await expect(
+        updateOrganizationAction(idleState, form(validForm)),
+      ).rejects.toThrow("REDIRECT:/vendor");
+      expect(client.organizationUpdate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("validates required fields server-side", async () => {
+    const client = useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      ...aal2,
+    });
+    const state = await updateOrganizationAction(
+      idleState,
+      form({ ...validForm, displayName: "" }),
+    );
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.displayName).toBeDefined();
+    expect(client.organizationUpdate).not.toHaveBeenCalled();
+  });
+
+  it("updates only the caller's own organization, derived from membership", async () => {
+    const client = useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      ...aal2,
+    });
+    const state = await updateOrganizationAction(
+      idleState,
+      form({
+        ...validForm,
+        // Attempted mass assignment — must never influence the update.
+        organizationId: "someone-elses-org",
+      }),
+    );
+    expect(state.status).toBe("success");
+    expect(client.organizationUpdate).toHaveBeenCalledWith({
+      legal_name: "Taco Cart LLC",
+      display_name: "Taco Cart",
+      slug: "taco-cart",
+    });
+  });
+
+  it("surfaces a duplicate slug as a friendly field error", async () => {
+    useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      ...aal2,
+      organizationUpdateError: { code: "23505", message: "duplicate key" },
+    });
+    const state = await updateOrganizationAction(idleState, form(validForm));
+    expect(state.status).toBe("error");
+    expect(state.fieldErrors?.slug).toBeDefined();
+  });
+
+  it("returns a safe generic error for unexpected database failures", async () => {
+    useSupabase({
+      user,
+      profile: vendorProfile,
+      memberships: [membership("owner")],
+      ...aal2,
+      organizationUpdateError: { code: "42501", message: "permission denied" },
+    });
+    const state = await updateOrganizationAction(idleState, form(validForm));
+    expect(state.status).toBe("error");
+    expect(state.message).not.toMatch(/permission denied/i);
   });
 });

@@ -7,7 +7,7 @@ export default function AuthLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-border/60">
+      <header className="bg-secondary text-secondary-foreground">
         <div className="mx-auto flex w-full max-w-5xl items-center px-4 py-4 sm:px-6">
           <Link href="/" className="text-lg font-semibold tracking-tight">
             {APP_CONFIG.name}

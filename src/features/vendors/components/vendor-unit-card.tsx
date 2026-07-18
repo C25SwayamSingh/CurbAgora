@@ -74,7 +74,17 @@ export function VendorUnitCard({
         </dl>
 
         {canManageLocation ? (
-          <VendorLocationControl unitId={unit.id} session={locationSession} />
+          // Keyed by session identity: when a session starts, ends, or is
+          // replaced, this forces a full remount so the internal
+          // useActionState hooks (bound to start vs. update actions) never
+          // carry stale state from a previous go-live cycle — without
+          // this, ending a session and going live again silently failed
+          // until a full page reload.
+          <VendorLocationControl
+            key={locationSession?.id ?? `${unit.id}-not-live`}
+            unitId={unit.id}
+            session={locationSession}
+          />
         ) : null}
 
         <div className="flex flex-wrap gap-2">

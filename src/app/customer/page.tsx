@@ -37,15 +37,15 @@ export default async function CustomerDashboardPage() {
             <CardHeader>
               <CardTitle>Discover vendors</CardTitle>
               <CardDescription>
-                Vendor discovery with live locations is coming in a future
-                release. For now you can browse the preview page.
+                See carts, trucks, and stands that are live near you right now —
+                as a list or on a map.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button asChild variant="outline">
                 <Link href="/discover">
                   <MapPin aria-hidden="true" />
-                  Browse vendors
+                  Find vendors near me
                 </Link>
               </Button>
             </CardContent>

@@ -56,10 +56,7 @@ export function OnboardingPathForm({
             className="sr-only"
             required
           />
-          <UtensilsCrossed
-            className="size-6 text-brand-fresh"
-            aria-hidden="true"
-          />
+          <UtensilsCrossed className="size-6 text-brand" aria-hidden="true" />
           <span className="font-medium">Discover vendors</span>
           <span className="text-sm text-muted-foreground">
             Find food carts, trucks, and pop-ups near you.
@@ -82,7 +79,7 @@ export function OnboardingPathForm({
             onChange={() => setSelected("vendor")}
             className="sr-only"
           />
-          <Store className="size-6 text-brand-warm" aria-hidden="true" />
+          <Store className="size-6 text-primary" aria-hidden="true" />
           <span className="font-medium">Set up my vendor business</span>
           <span className="text-sm text-muted-foreground">
             Create your organization after profile setup and two-factor

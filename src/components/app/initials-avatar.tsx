@@ -14,7 +14,7 @@ export function InitialsAvatar({
   return (
     <span
       className={cn(
-        "inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary",
+        "inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-brand/15 text-sm font-semibold text-brand",
         className,
       )}
       aria-hidden="true"

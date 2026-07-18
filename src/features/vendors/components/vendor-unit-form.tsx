@@ -75,7 +75,7 @@ function OptionPill({
       className={cn(
         "cursor-pointer rounded-full border px-3 py-1.5 text-sm transition-colors",
         checked
-          ? "border-primary bg-primary/10 font-medium text-primary"
+          ? "border-secondary bg-secondary font-medium text-secondary-foreground"
           : "border-border text-muted-foreground hover:bg-accent/50",
       )}
     >
@@ -95,9 +95,17 @@ function OptionPill({
 export function VendorUnitForm({
   initialUnit,
   organizationSlug,
+  placesConfigured = false,
 }: {
   initialUnit?: VendorUnit;
   organizationSlug: string;
+  /**
+   * When Google Places autocomplete is configured, the State dropdown is
+   * hidden — the state comes from the selected city suggestion (and is
+   * re-verified server-side against the placeId). The dropdown remains as
+   * the manual fallback in local dev without a key.
+   */
+  placesConfigured?: boolean;
 }) {
   const isEdit = Boolean(initialUnit);
   const [state, formAction] = useActionState(
@@ -498,7 +506,7 @@ export function VendorUnitForm({
             className={cn(
               "cursor-pointer rounded-full border px-3 py-1.5 text-sm transition-colors",
               showCustomCuisine
-                ? "border-primary bg-primary/10 font-medium text-primary"
+                ? "border-secondary bg-secondary font-medium text-secondary-foreground"
                 : "border-border text-muted-foreground hover:bg-accent/50",
             )}
           >
@@ -512,7 +520,7 @@ export function VendorUnitForm({
             {cuisineCategories.map((value) => (
               <span
                 key={value}
-                className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground"
               >
                 {labelFor(CUISINE_CATEGORIES, value)}
               </span>
@@ -520,7 +528,7 @@ export function VendorUnitForm({
             {customCuisines.map((cuisine) => (
               <span
                 key={cuisine}
-                className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground"
               >
                 {cuisine}
               </span>
@@ -557,7 +565,7 @@ export function VendorUnitForm({
                 {customCuisines.map((cuisine) => (
                   <span
                     key={cuisine}
-                    className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/10 py-1 pl-3 pr-1.5 text-sm font-medium text-primary"
+                    className="inline-flex items-center gap-1 rounded-full border border-secondary bg-secondary py-1 pl-3 pr-1.5 text-sm font-medium text-secondary-foreground"
                   >
                     {cuisine}
                     <input
@@ -573,7 +581,7 @@ export function VendorUnitForm({
                         )
                       }
                       aria-label={`Remove ${cuisine}`}
-                      className="rounded-full p-0.5 hover:bg-primary/20"
+                      className="rounded-full p-0.5 hover:bg-secondary-foreground/20"
                     >
                       <X className="size-3" aria-hidden="true" />
                     </button>
@@ -593,7 +601,12 @@ export function VendorUnitForm({
         />
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div
+        className={cn(
+          "gap-4",
+          placesConfigured ? "block" : "grid sm:grid-cols-2",
+        )}
+      >
         <div className="relative space-y-2">
           <Label htmlFor="city">City</Label>
           <Input
@@ -629,26 +642,35 @@ export function VendorUnitForm({
           <FieldError id="city-error" errors={state.fieldErrors?.city} />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="state">State</Label>
-          <Select
-            id="state"
-            name="state"
-            value={unitState}
-            onChange={(event) => setUnitState(event.target.value)}
-            required
-            aria-describedby="state-error"
-            aria-invalid={Boolean(state.fieldErrors?.state)}
-          >
-            <option value="">Choose a state</option>
-            {US_STATES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-          <FieldError id="state-error" errors={state.fieldErrors?.state} />
-        </div>
+        {placesConfigured ? (
+          // State travels with the selected suggestion (and is re-verified
+          // server-side against the placeId) — no separate dropdown needed.
+          <>
+            <input type="hidden" name="state" value={unitState} />
+            <FieldError id="state-error" errors={state.fieldErrors?.state} />
+          </>
+        ) : (
+          <div className="mt-4 space-y-2">
+            <Label htmlFor="state">State</Label>
+            <Select
+              id="state"
+              name="state"
+              value={unitState}
+              onChange={(event) => setUnitState(event.target.value)}
+              required
+              aria-describedby="state-error"
+              aria-invalid={Boolean(state.fieldErrors?.state)}
+            >
+              <option value="">Choose a state</option>
+              {US_STATES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <FieldError id="state-error" errors={state.fieldErrors?.state} />
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">

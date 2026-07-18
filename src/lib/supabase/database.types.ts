@@ -352,6 +352,33 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      nearby_live_vendors: {
+        Args: {
+          p_latitude: number;
+          p_longitude: number;
+          p_radius_miles: number;
+        };
+        Returns: {
+          vendor_unit_id: string;
+          organization_id: string;
+          organization_slug: string;
+          unit_slug: string;
+          name: string;
+          unit_type: VendorUnitType;
+          cuisine_categories: CuisineCategory[];
+          city: string;
+          state: string | null;
+          neighborhood: string | null;
+          primary_image_path: string | null;
+          operating_status: VendorOperatingStatus;
+          latitude: number;
+          longitude: number;
+          public_label: string;
+          started_at: string;
+          expected_end_at: string | null;
+          distance_miles: number;
+        }[];
+      };
     };
     Enums: {
       account_type: AccountType;
@@ -381,3 +408,5 @@ export type VendorLocationSession =
   Database["public"]["Tables"]["vendor_location_sessions"]["Row"];
 export type VendorLocationSessionPreview =
   Database["public"]["Views"]["vendor_location_session_previews"]["Row"];
+export type NearbyLiveVendor =
+  Database["public"]["Functions"]["nearby_live_vendors"]["Returns"][number];

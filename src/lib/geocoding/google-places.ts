@@ -92,6 +92,48 @@ export async function autocompleteCities(
     .filter((s) => s.placeId && s.description);
 }
 
+export type PlaceLocation = { latitude: number; longitude: number };
+
+/**
+ * Resolves a Place ID to its coordinates — used as the search center for
+ * customer nearby discovery when the customer types an area instead of
+ * sharing device location. Returns null when the place has no location.
+ */
+export async function resolvePlaceLocation(
+  placeId: string,
+): Promise<PlaceLocation | null> {
+  const apiKey = getGooglePlacesApiKey();
+  const response = await fetch(
+    `${PLACES_DETAILS_URL}/${encodeURIComponent(placeId)}`,
+    {
+      headers: {
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "location",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = (await response.json()) as {
+    location?: { latitude?: number; longitude?: number };
+  };
+
+  if (
+    typeof data.location?.latitude !== "number" ||
+    typeof data.location?.longitude !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    latitude: data.location.latitude,
+    longitude: data.location.longitude,
+  };
+}
+
 export type VerifiedCity = { city: string; state: string };
 
 /**

@@ -16,6 +16,7 @@ This is **food-vendor-platform** — a platform for mobile food vendors and cust
 | `docs/SECURITY_MODEL.md` | Credential and access rules               |
 | `docs/USER_FLOWS.md`     | Customer, vendor, and admin flows         |
 | `docs/BUILD_PHASES.md`   | Phased delivery plan                      |
+| `docs/DESIGN_SYSTEM.md`  | Brand palette, tokens, and visual rules   |
 | `PROJECT_STATE.md`       | Current implementation status             |
 | `AGENTS.md`              | Agent coding guidelines                   |
 
@@ -32,6 +33,12 @@ Implemented: Next.js scaffold, Tailwind/shadcn, Supabase placeholders, feature f
 - Feature modules in `src/features/`
 - Mobile-first Tailwind classes
 - No secrets in browser bundles
+
+## Design Rules (details in docs/DESIGN_SYSTEM.md)
+
+- Use semantic color tokens only (defined in `src/app/globals.css`); never hardcode hexes or raw Tailwind palette colors in components.
+- Orange = actions & live states (ink text on orange, never white). Teal = brand surfaces & selected states. Green `success` ≠ orange `live`.
+- Both light and dark palettes are first-class (`prefers-color-scheme`); check changes in both.
 
 ## Commands
 

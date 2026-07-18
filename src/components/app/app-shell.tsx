@@ -15,19 +15,20 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-border/60 bg-background/80 backdrop-blur-sm">
+      {/* Deep-teal brand bar — the signature CurbAgora surface. */}
+      <header className="bg-secondary text-secondary-foreground">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Link href="/" className="text-lg font-semibold tracking-tight">
             {APP_CONFIG.name}
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
             {nav ? (
-              <nav className="flex gap-3 text-sm text-muted-foreground sm:gap-5">
+              <nav className="flex gap-3 text-sm text-secondary-foreground/80 sm:gap-5">
                 {nav.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="hover:text-foreground"
+                    className="transition-colors hover:text-primary"
                   >
                     {item.label}
                   </Link>

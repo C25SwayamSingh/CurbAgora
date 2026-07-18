@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 export function LandingPage() {
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-border/60 bg-background/80 backdrop-blur-sm">
+      <header className="bg-secondary text-secondary-foreground">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-2">
             <Truck className="size-6 text-primary" aria-hidden="true" />
@@ -16,11 +16,17 @@ export function LandingPage() {
             </span>
           </div>
           <div className="flex items-center gap-4 sm:gap-6">
-            <nav className="hidden gap-6 text-sm text-muted-foreground sm:flex">
-              <a href="#customers" className="hover:text-foreground">
+            <nav className="hidden gap-6 text-sm text-secondary-foreground/80 sm:flex">
+              <a
+                href="#customers"
+                className="transition-colors hover:text-primary"
+              >
                 For Customers
               </a>
-              <a href="#vendors" className="hover:text-foreground">
+              <a
+                href="#vendors"
+                className="transition-colors hover:text-primary"
+              >
                 For Vendors
               </a>
             </nav>
@@ -72,7 +78,7 @@ export function LandingPage() {
 
         <section
           id="customers"
-          className="border-y border-border/60 bg-muted/40 py-12 sm:py-16"
+          className="border-y border-border/60 bg-muted/60 py-12 sm:py-16"
         >
           <div className="mx-auto w-full max-w-5xl px-4 sm:px-6">
             <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -84,7 +90,7 @@ export function LandingPage() {
             </p>
             <ul className="mt-6 grid gap-4 sm:grid-cols-3">
               <li className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                <MapPin className="mb-3 size-5 text-brand-fresh" />
+                <MapPin className="mb-3 size-5 text-brand" />
                 <h3 className="font-medium">Discover nearby vendors</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Browse mobile food vendors and see live location updates when
@@ -92,7 +98,7 @@ export function LandingPage() {
                 </p>
               </li>
               <li className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                <Store className="mb-3 size-5 text-brand-fresh" />
+                <Store className="mb-3 size-5 text-brand" />
                 <h3 className="font-medium">Explore menus</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   View menus before you visit so you know what each vendor is
@@ -100,7 +106,7 @@ export function LandingPage() {
                 </p>
               </li>
               <li className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                <Truck className="mb-3 size-5 text-brand-fresh" />
+                <Truck className="mb-3 size-5 text-brand" />
                 <h3 className="font-medium">Support local street food</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Find independent operators and pop-up vendors in your area.
@@ -144,8 +150,8 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-border/60 py-6">
-        <p className="text-center text-sm text-muted-foreground">
+      <footer className="bg-secondary py-6 text-secondary-foreground">
+        <p className="text-center text-sm text-secondary-foreground/80">
           CurbAgora — Phase 1 foundation
         </p>
       </footer>

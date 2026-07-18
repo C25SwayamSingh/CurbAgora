@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { AlertCircle, MapPin } from "lucide-react";
+import { AlertCircle, ExternalLink, MapPin } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -50,27 +50,15 @@ function endDayOptions() {
 }
 
 /**
- * 30-minute time slots ("HH:mm") for the chosen day. For today, only
- * slots at least 15 minutes in the future are offered — the schema
- * rejects past end times, so the picker never offers one.
+ * All 48 half-hour slots in a day ("HH:mm") — carts commonly stay open
+ * past midnight, so every day offers the full 24 hours rather than only
+ * hours later than "now". Past-relative-to-now moments are handled by
+ * composeExpectedEnd's rollover, not by hiding options here.
  */
-function endTimeSlots(dayOffset: number) {
+function endTimeSlots() {
   const slots: { value: string; label: string }[] = [];
-  const now = new Date();
   for (let hour = 0; hour < 24; hour++) {
     for (const minute of [0, 30]) {
-      if (dayOffset === 0) {
-        const slot = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-          hour,
-          minute,
-        );
-        if (slot.getTime() <= now.getTime() + 15 * 60 * 1000) {
-          continue;
-        }
-      }
       const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
       slots.push({
         value,
@@ -84,17 +72,30 @@ function endTimeSlots(dayOffset: number) {
   return slots;
 }
 
-/** Local-time "YYYY-MM-DDTHH:mm" for the hidden expectedEndAt field. */
+/**
+ * Local-time "YYYY-MM-DDTHH:mm" for the hidden expectedEndAt field. When
+ * "Today" plus an hour earlier than the current time is picked, that
+ * naturally means "later tonight, after midnight" (a lot of carts run
+ * past 12am) — rolling the composed moment forward one day captures that
+ * without asking the vendor to think about calendar-day boundaries.
+ */
 function composeExpectedEnd(dayOffset: string, time: string) {
   if (dayOffset === "" || time === "") {
     return "";
   }
+  const [hour, minute] = time.split(":").map(Number);
   const date = new Date();
   date.setDate(date.getDate() + Number(dayOffset));
+  date.setHours(hour, minute, 0, 0);
+  if (date.getTime() <= Date.now()) {
+    date.setDate(date.getDate() + 1);
+  }
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${time}`;
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
 
 /**
@@ -152,12 +153,12 @@ export function VendorLocationControl({
       setEndTime("");
       return;
     }
-    const slots = endTimeSlots(Number(value));
-    if (!slots.some((slot) => slot.value === endTime)) {
-      // Default to 8:00 PM — a typical vending close — falling back to
-      // the first still-available slot when 8 PM has already passed.
-      const evening = slots.find((slot) => slot.value === "20:00");
-      setEndTime((evening ?? slots[0])?.value ?? "");
+    if (endTime === "") {
+      // Default to 8:00 PM — a typical vending close. If that moment has
+      // already passed today, composeExpectedEnd rolls it to tonight
+      // after midnight / tomorrow evening, so this default is always
+      // meaningful without the vendor needing to think about it.
+      setEndTime("20:00");
     }
   }
 
@@ -258,7 +259,7 @@ export function VendorLocationControl({
                 className="flex-1"
                 aria-describedby={`expectedEndAt-error-${unitId}`}
               >
-                {endTimeSlots(Number(endDay)).map((slot) => (
+                {endTimeSlots().map((slot) => (
                   <option key={slot.value} value={slot.value}>
                     {slot.label}
                   </option>
@@ -294,7 +295,7 @@ export function VendorLocationControl({
   if (session) {
     return (
       <div className="space-y-2 rounded-lg border border-border p-3">
-        <p className="flex items-center gap-1.5 text-sm font-medium text-brand-fresh">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-live">
           <MapPin className="size-4" aria-hidden="true" />
           Live now
         </p>
@@ -305,6 +306,19 @@ export function VendorLocationControl({
             : ""}
         </p>
         <p className="text-sm">{session.public_label}</p>
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          Tracked at {session.latitude.toFixed(5)},{" "}
+          {session.longitude.toFixed(5)}
+          <a
+            href={`https://www.google.com/maps?q=${session.latitude},${session.longitude}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-medium text-live underline underline-offset-2"
+          >
+            Open in Maps
+            <ExternalLink className="size-3" aria-hidden="true" />
+          </a>
+        </p>
         <div className="flex flex-wrap gap-2 pt-1">
           <Button
             type="button"

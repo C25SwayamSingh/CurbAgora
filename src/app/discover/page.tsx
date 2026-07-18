@@ -1,18 +1,34 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { pageTitle } from "@/lib/app-config";
+import { DiscoverNearby } from "@/features/discovery/components/discover-nearby";
+
+export const metadata: Metadata = {
+  title: pageTitle("Find vendors near you"),
+};
 
 export default function DiscoverPage() {
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-4 py-16 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">Find Vendors</h1>
-      <p className="mt-2 text-muted-foreground">
-        Customer discovery is coming in a future phase. Map and live-location
-        features are not yet available.
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-12">
+      <Link
+        href="/"
+        className="text-sm text-muted-foreground hover:text-foreground"
+      >
+        ← CurbAgora
+      </Link>
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
+        Find vendors near you
+      </h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        See carts, trucks, and stands that are live right now. Your location is
+        only used when you ask, only for this search, and never stored.
       </p>
-      <Button asChild className="mt-6">
-        <Link href="/">Back to home</Link>
-      </Button>
+      <div className="mt-6">
+        <DiscoverNearby
+          mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null}
+        />
+      </div>
     </main>
   );
 }

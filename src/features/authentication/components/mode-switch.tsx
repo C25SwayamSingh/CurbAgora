@@ -57,7 +57,7 @@ export function ModeSwitch({
 
   return (
     <div
-      className="flex items-center gap-1 rounded-lg border border-border p-0.5"
+      className="flex items-center gap-1 rounded-lg border border-secondary-foreground/25 p-0.5"
       role="group"
       aria-label="Interface mode"
     >

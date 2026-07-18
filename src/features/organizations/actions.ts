@@ -1,15 +1,20 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireAuth } from "@/lib/auth/guards";
+import { requireAuth, requireVendorSensitiveAction } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   errorState,
+  successState,
   type ActionState,
 } from "@/features/authentication/action-state";
-import { createOrganizationSchema } from "@/features/organizations/schemas";
+import {
+  createOrganizationSchema,
+  updateOrganizationSchema,
+} from "@/features/organizations/schemas";
 
 /**
  * Vendor onboarding: create the organization and its initial owner
@@ -80,4 +85,57 @@ export async function createOrganizationAction(
   }
 
   redirect("/vendor");
+}
+
+/**
+ * Update the caller's organization's business details (display name, legal
+ * name, URL slug). Owner-only and mandatory-MFA (requireVendorSensitiveAction)
+ * — matches the database's own organizations_update_owner /
+ * organizations_update_requires_mfa restrictive policies, which this action
+ * relies on as the actual enforcement, not just the app-layer role check.
+ */
+export async function updateOrganizationAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const ctx = await requireVendorSensitiveAction(
+    ["owner"],
+    "/vendor/organization/edit",
+  );
+
+  const parsed = updateOrganizationSchema.safeParse({
+    legalName: formData.get("legalName"),
+    displayName: formData.get("displayName"),
+    slug: formData.get("slug"),
+  });
+
+  if (!parsed.success) {
+    return errorState(
+      "Please fix the highlighted fields.",
+      z.flattenError(parsed.error).fieldErrors,
+    );
+  }
+
+  const supabase = await createServerClient();
+  const { error } = await supabase
+    .from("organizations")
+    .update({
+      legal_name: parsed.data.legalName,
+      display_name: parsed.data.displayName,
+      slug: parsed.data.slug,
+    })
+    .eq("id", ctx.membership.organization_id);
+
+  if (error) {
+    if (error.code === "23505") {
+      return errorState("That URL name is already taken.", {
+        slug: ["Choose a different URL name."],
+      });
+    }
+    console.error("organization update failed", { code: error.code });
+    return errorState("Something went wrong. Please try again in a moment.");
+  }
+
+  revalidatePath("/vendor");
+  return successState("Business details updated.");
 }
