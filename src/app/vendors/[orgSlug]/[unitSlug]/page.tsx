@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ExternalLink, Mail, MapPin, Phone, Store } from "lucide-react";
 
 import { InitialsAvatar } from "@/components/app/initials-avatar";
+import { LoyaltyJoinCard } from "@/features/loyalty/components/loyalty-join-card";
 import { vendorPhotoPublicUrl } from "@/features/vendors/photo";
 import { Button } from "@/components/ui/button";
 import { pageTitle } from "@/lib/app-config";
@@ -25,6 +26,16 @@ async function loadUnit(orgSlug: string, unitSlug: string) {
     .eq("slug", unitSlug)
     .maybeSingle();
   return unit;
+}
+
+async function loadLoyaltyPreview(orgSlug: string) {
+  const supabase = await createServerClient();
+  const { data } = await supabase
+    .from("loyalty_program_previews")
+    .select("*")
+    .eq("organization_slug", orgSlug)
+    .maybeSingle();
+  return data;
 }
 
 /**
@@ -59,9 +70,10 @@ export default async function VendorPublicPreviewPage({
   params: Promise<{ orgSlug: string; unitSlug: string }>;
 }) {
   const { orgSlug, unitSlug } = await params;
-  const [unit, liveSession] = await Promise.all([
+  const [unit, liveSession, loyalty] = await Promise.all([
     loadUnit(orgSlug, unitSlug),
     loadLiveSession(orgSlug, unitSlug),
+    loadLoyaltyPreview(orgSlug),
   ]);
 
   if (!unit) {
@@ -165,6 +177,16 @@ export default async function VendorPublicPreviewPage({
             <ExternalLink className="size-3.5" aria-hidden="true" />
           </a>
         </div>
+      ) : null}
+
+      {loyalty ? (
+        <LoyaltyJoinCard
+          organizationId={loyalty.organization_id}
+          stampsRequired={loyalty.stamps_required}
+          rewardName={loyalty.reward_name}
+          qualifyingMinCents={loyalty.qualifying_min_cents}
+          earningPaused={loyalty.earning_paused}
+        />
       ) : null}
 
       {unit.description ? (

@@ -32,6 +32,17 @@ export type VendorOperatingStatus = "open" | "closed" | "temporarily_closed";
 export type CuisineCategory = string;
 export type PaymentMethod =
   "cash" | "credit_card" | "debit_card" | "mobile_pay" | "contactless";
+export type LoyaltyEntryType =
+  | "PURCHASE_STAMP"
+  | "FIRST_VISIT_BONUS"
+  | "REDEMPTION"
+  | "REVERSAL"
+  | "MANUAL_ADJUSTMENT";
+export type LoyaltyProgramVersionStatus = "active" | "archived";
+export type LoyaltyClaimStatus =
+  "pending" | "confirmed" | "cancelled" | "expired";
+export type LoyaltyRedemptionStatus =
+  "requested" | "redeemed" | "cancelled" | "expired";
 
 export type Json =
   | string
@@ -283,8 +294,128 @@ export type Database = {
         };
         Relationships: [];
       };
+      loyalty_programs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          earning_paused: boolean;
+          redemption_paused: boolean;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      loyalty_program_versions: {
+        Row: {
+          id: string;
+          program_id: string;
+          organization_id: string;
+          version_number: number;
+          status: LoyaltyProgramVersionStatus;
+          stamps_required: number;
+          qualifying_min_cents: number;
+          stamp_period_minutes: number;
+          reward_name: string;
+          reward_retail_value_cents: number;
+          reward_est_cost_cents: number | null;
+          advisor_snapshot: Json | null;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      loyalty_accounts: {
+        Row: {
+          id: string;
+          organization_id: string;
+          user_id: string;
+          stamp_balance: number;
+          lifetime_stamps: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      loyalty_claim_codes: {
+        Row: {
+          id: string;
+          account_id: string;
+          organization_id: string;
+          code: string;
+          status: LoyaltyClaimStatus;
+          expires_at: string;
+          confirmed_by: string | null;
+          confirmed_at: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      loyalty_redemptions: {
+        Row: {
+          id: string;
+          account_id: string;
+          organization_id: string;
+          program_version_id: string;
+          code: string;
+          status: LoyaltyRedemptionStatus;
+          stamps_spent: number;
+          reward_name: string;
+          expires_at: string;
+          confirmed_by: string | null;
+          confirmed_at: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      loyalty_ledger_entries: {
+        Row: {
+          id: string;
+          account_id: string;
+          organization_id: string;
+          program_version_id: string;
+          entry_type: LoyaltyEntryType;
+          delta_stamps: number;
+          reason: string | null;
+          idempotency_key: string;
+          reverses_entry_id: string | null;
+          claim_code_id: string | null;
+          redemption_id: string | null;
+          actor_user_id: string;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     Views: {
+      loyalty_program_previews: {
+        Row: {
+          organization_id: string;
+          organization_slug: string;
+          organization_name: string;
+          earning_paused: boolean;
+          redemption_paused: boolean;
+          program_version_id: string;
+          stamps_required: number;
+          qualifying_min_cents: number;
+          stamp_period_minutes: number;
+          reward_name: string;
+          reward_retail_value_cents: number;
+        };
+        Relationships: [];
+      };
       vendor_unit_previews: {
         Row: {
           id: string;
@@ -352,6 +483,65 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      loyalty_publish_program: {
+        Args: {
+          p_organization_id: string;
+          p_stamps_required: number;
+          p_qualifying_min_cents: number;
+          p_stamp_period_minutes: number;
+          p_reward_name: string;
+          p_reward_retail_value_cents: number;
+          p_reward_est_cost_cents?: number | null;
+          p_advisor_snapshot?: Json | null;
+        };
+        Returns: string;
+      };
+      loyalty_set_program_paused: {
+        Args: {
+          p_organization_id: string;
+          p_earning_paused: boolean;
+          p_redemption_paused: boolean;
+        };
+        Returns: undefined;
+      };
+      loyalty_create_claim_code: {
+        Args: { p_organization_id: string };
+        Returns: { code: string; expires_at: string }[];
+      };
+      loyalty_confirm_claim: {
+        Args: { p_organization_id: string; p_code: string };
+        Returns: {
+          stamp_balance: number;
+          stamps_required: number;
+          first_visit: boolean;
+        }[];
+      };
+      loyalty_request_redemption: {
+        Args: { p_organization_id: string };
+        Returns: { code: string; reward_name: string; expires_at: string }[];
+      };
+      loyalty_confirm_redemption: {
+        Args: { p_organization_id: string; p_code: string };
+        Returns: { reward_name: string; remaining_balance: number }[];
+      };
+      loyalty_reverse_entry: {
+        Args: { p_entry_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      loyalty_adjust_balance: {
+        Args: { p_account_id: string; p_delta: number; p_reason: string };
+        Returns: undefined;
+      };
+      loyalty_program_stats: {
+        Args: { p_organization_id: string };
+        Returns: {
+          members: number;
+          stamps_issued: number;
+          rewards_redeemed: number;
+          outstanding_stamps: number;
+          estimated_liability_cents: number;
+        }[];
+      };
       nearby_live_vendors: {
         Args: {
           p_latitude: number;
@@ -410,3 +600,15 @@ export type VendorLocationSessionPreview =
   Database["public"]["Views"]["vendor_location_session_previews"]["Row"];
 export type NearbyLiveVendor =
   Database["public"]["Functions"]["nearby_live_vendors"]["Returns"][number];
+export type LoyaltyProgram =
+  Database["public"]["Tables"]["loyalty_programs"]["Row"];
+export type LoyaltyProgramVersion =
+  Database["public"]["Tables"]["loyalty_program_versions"]["Row"];
+export type LoyaltyAccount =
+  Database["public"]["Tables"]["loyalty_accounts"]["Row"];
+export type LoyaltyLedgerEntry =
+  Database["public"]["Tables"]["loyalty_ledger_entries"]["Row"];
+export type LoyaltyRedemption =
+  Database["public"]["Tables"]["loyalty_redemptions"]["Row"];
+export type LoyaltyProgramPreview =
+  Database["public"]["Views"]["loyalty_program_previews"]["Row"];

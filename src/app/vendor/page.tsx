@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Shield, ShieldCheck, Users } from "lucide-react";
+import { Gift, Shield, ShieldCheck, Users } from "lucide-react";
 
 import { AuthenticatedAppShell } from "@/components/app/authenticated-app-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -195,6 +195,28 @@ export default async function VendorDashboardPage() {
             openLocationSessionsByUnitId={openLocationSessionsByUnitId}
           />
         ) : null}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Gift className="size-5 text-brand" aria-hidden="true" />
+              Loyalty &amp; rewards
+            </CardTitle>
+            <CardDescription>
+              Build a neighborhood stamp card with the Loyalty Advisor — it
+              models the economics so the rewards stay sustainable for your
+              margins.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/vendor/loyalty">
+                <Gift aria-hidden="true" />
+                Open the Loyalty Advisor
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

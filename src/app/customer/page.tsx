@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { Gift, MapPin } from "lucide-react";
 
 import { AuthenticatedAppShell } from "@/components/app/authenticated-app-shell";
 import { Button } from "@/components/ui/button";
@@ -53,12 +53,20 @@ export default async function CustomerDashboardPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Nothing else here yet</CardTitle>
+              <CardTitle>My rewards</CardTitle>
               <CardDescription>
-                Favorites, reviews, and loyalty rewards arrive in later phases —
-                this dashboard will grow with them.
+                Track your stamp cards from neighborhood vendors and show your
+                code at the counter to earn or redeem.
               </CardDescription>
             </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline">
+                <Link href="/rewards">
+                  <Gift aria-hidden="true" />
+                  View my rewards
+                </Link>
+              </Button>
+            </CardContent>
           </Card>
         </div>
       </div>
