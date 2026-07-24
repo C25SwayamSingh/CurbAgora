@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
-import { AlertCircle, CheckCircle2, Gift, Stamp } from "lucide-react";
+import { AlertCircle, CheckCircle2, Gift, QrCode } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -18,10 +20,7 @@ import {
   type ActionState,
 } from "@/features/authentication/action-state";
 import { SubmitButton } from "@/features/authentication/components/submit-button";
-import {
-  confirmLoyaltyClaimAction,
-  confirmLoyaltyRedemptionAction,
-} from "@/features/loyalty/actions";
+import { confirmLoyaltyRedemptionAction } from "@/features/loyalty/actions";
 
 function Result({ state }: { state: ActionState }) {
   if (state.status === "error" && state.message) {
@@ -44,15 +43,12 @@ function Result({ state }: { state: ActionState }) {
 }
 
 /**
- * Counter panel any staff member uses to confirm a customer's short-lived
- * code. Stamps and redemptions are only ever applied by these staff-verified
- * codes — customers can never self-issue value.
+ * Rewards-page counter panel. Earning now lives on its own fast screen at
+ * /vendor/checkout — it is the thing staff do dozens of times a shift and
+ * shouldn't require loading a dashboard. Redemption keeps its own 6-character
+ * code and stays here, unchanged.
  */
 export function LoyaltyStaffPanel() {
-  const [claimState, claimAction] = useActionState(
-    confirmLoyaltyClaimAction,
-    idleState,
-  );
   const [redeemState, redeemAction] = useActionState(
     confirmLoyaltyRedemptionAction,
     idleState,
@@ -63,33 +59,23 @@ export function LoyaltyStaffPanel() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Stamp className="size-5 text-brand" aria-hidden="true" />
-            Add a stamp
+            <QrCode className="size-5 text-brand" aria-hidden="true" />
+            Award points
           </CardTitle>
           <CardDescription>
-            Enter the 6-character code from the customer&apos;s phone after an
-            eligible purchase.
+            Scan the customer&apos;s QR or enter their 4-digit code, then type
+            the eligible subtotal from your register. The server turns that
+            verified amount into points — customers can never enter it
+            themselves.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={claimAction} className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="claim-code">Stamp code</Label>
-              <Input
-                id="claim-code"
-                name="code"
-                autoComplete="off"
-                inputMode="text"
-                maxLength={6}
-                placeholder="ABC123"
-                className="font-mono uppercase tracking-widest"
-              />
-            </div>
-            <Result state={claimState} />
-            <SubmitButton pendingLabel="Confirming…">
-              Confirm stamp
-            </SubmitButton>
-          </form>
+          <Button asChild className="w-full">
+            <Link href="/vendor/checkout">
+              <QrCode aria-hidden="true" />
+              Open checkout
+            </Link>
+          </Button>
         </CardContent>
       </Card>
 

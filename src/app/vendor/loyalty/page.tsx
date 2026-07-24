@@ -15,7 +15,11 @@ import {
 import { pageTitle } from "@/lib/app-config";
 import { requireVendorMember } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
-import { formatCents } from "@/features/loyalty/engine";
+import {
+  formatCents,
+  formatPoints,
+  rewardDisplayLabel,
+} from "@/features/loyalty/engine";
 import { isLoyaltyConsultantConfigured } from "@/features/loyalty/consultant";
 import { LoyaltyAdvisorChat } from "@/features/loyalty/components/loyalty-advisor-chat";
 import { LoyaltyConsultation } from "@/features/loyalty/components/loyalty-consultation";
@@ -32,23 +36,32 @@ export default async function VendorLoyaltyPage() {
 
   const supabase = await createServerClient();
 
-  const [{ data: program }, { data: version }, { data: statsRows }] =
-    await Promise.all([
-      supabase
-        .from("loyalty_programs")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .maybeSingle(),
-      supabase
-        .from("loyalty_program_versions")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("status", "active")
-        .maybeSingle(),
-      supabase.rpc("loyalty_program_stats", {
-        p_organization_id: organizationId,
-      }),
-    ]);
+  const [
+    { data: program },
+    { data: version },
+    { data: statsRows },
+    { data: catalog },
+  ] = await Promise.all([
+    supabase
+      .from("loyalty_programs")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .maybeSingle(),
+    supabase
+      .from("loyalty_program_versions")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .eq("status", "active")
+      .maybeSingle(),
+    supabase.rpc("loyalty_program_stats", {
+      p_organization_id: organizationId,
+    }),
+    supabase
+      .from("loyalty_reward_catalog_items")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("points_cost"),
+  ]);
 
   const stats = statsRows?.[0];
   const hasActiveProgram = Boolean(version);
@@ -68,8 +81,8 @@ export default async function VendorLoyaltyPage() {
             Loyalty &amp; rewards
           </h1>
           <p className="text-sm text-muted-foreground">
-            A neighborhood stamp card for your regulars — designed with the
-            advisor, approved by you, and safe for your margins.
+            A points card for your regulars — designed with the advisor,
+            approved by you, and safe for your margins.
           </p>
         </div>
 
@@ -81,15 +94,16 @@ export default async function VendorLoyaltyPage() {
                   <div>
                     <CardTitle className="text-lg">Live program</CardTitle>
                     <CardDescription>
-                      {version.stamps_required}-stamp card · reward:{" "}
-                      {version.reward_name}
+                      {version.points_per_dollar} points per $1 ·{" "}
+                      {(catalog ?? []).length} reward
+                      {(catalog ?? []).length === 1 ? "" : "s"}
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
                     {program?.earning_paused ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                         <PauseCircle className="size-3" aria-hidden="true" />
-                        Stamps paused
+                        Earning paused
                       </span>
                     ) : (
                       <span className="rounded-full bg-live/15 px-2 py-0.5 text-xs font-medium text-live">
@@ -107,13 +121,45 @@ export default async function VendorLoyaltyPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm">
-                  One stamp per visit with an eligible purchase of at least{" "}
-                  {formatCents(version.qualifying_min_cents)} (max one stamp per{" "}
-                  {Math.round(version.stamp_period_minutes / 60)}h).{" "}
-                  {version.stamps_required} stamps unlock a free{" "}
-                  {version.reward_name} (menu value{" "}
-                  {formatCents(version.reward_retail_value_cents)}).
+                  Customers earn {version.points_per_dollar} points for every $1
+                  of eligible spend, confirmed by your staff at the counter.
                 </p>
+
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Reward menu
+                    {canManage ? (
+                      <span className="ml-2 font-normal normal-case tracking-normal">
+                        —{" "}
+                        <a
+                          href="#change-rewards"
+                          className="text-brand underline"
+                        >
+                          change these below
+                        </a>
+                      </span>
+                    ) : null}
+                  </p>
+                  <ul className="mt-1 space-y-1 text-sm">
+                    {(catalog ?? []).map((item) => (
+                      <li key={item.id} className="flex flex-wrap gap-2">
+                        <span className="rounded-full bg-secondary/20 px-2 py-0.5 text-xs font-medium text-brand">
+                          {formatPoints(item.points_cost)}
+                        </span>
+                        <span>
+                          {rewardDisplayLabel(
+                            item.reward_kind,
+                            item.reward_name,
+                            item.reward_value_cents,
+                          )}
+                          {item.reward_kind === "FREE_ITEM"
+                            ? ` (menu value ${formatCents(item.reward_value_cents)})`
+                            : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
 
                 {stats ? (
                   <dl className="grid grid-cols-2 gap-3 rounded-lg bg-muted/60 p-4 text-sm sm:grid-cols-4">
@@ -123,9 +169,11 @@ export default async function VendorLoyaltyPage() {
                     </div>
                     <div>
                       <dt className="text-xs text-muted-foreground">
-                        Stamps issued
+                        Points issued
                       </dt>
-                      <dd className="font-semibold">{stats.stamps_issued}</dd>
+                      <dd className="font-semibold">
+                        {Number(stats.points_issued).toLocaleString("en-US")}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-xs text-muted-foreground">
@@ -137,7 +185,7 @@ export default async function VendorLoyaltyPage() {
                     </div>
                     <div>
                       <dt className="text-xs text-muted-foreground">
-                        Est. outstanding liability
+                        If everyone cashed in
                       </dt>
                       <dd className="font-semibold">
                         {formatCents(Number(stats.estimated_liability_cents))}
@@ -146,16 +194,22 @@ export default async function VendorLoyaltyPage() {
                   </dl>
                 ) : null}
 
-                {version.reward_est_cost_cents === null ? (
-                  <Alert>
-                    <TrendingUp aria-hidden="true" />
-                    <AlertDescription>
-                      Liability uses a 30%-of-menu-price cost estimate. Re-run
-                      the advisor with your real reward cost for a precise
-                      figure.
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
+                <Alert>
+                  <TrendingUp aria-hidden="true" />
+                  <AlertDescription>
+                    {/* Leading space inside the element, not between two
+                        siblings — JSX discards the latter unpredictably
+                        depending on where the formatter wraps the line. */}
+                    <strong>If everyone cashed in</strong>
+                    <span>
+                      {" "}
+                      is what the points people are holding would cost you in
+                      food, all at once. It won&apos;t happen in one day, and
+                      it&apos;s an estimate from your own reward costs — not a
+                      bill.
+                    </span>
+                  </AlertDescription>
+                </Alert>
 
                 {canManage ? (
                   <LoyaltyPauseControl
@@ -178,18 +232,19 @@ export default async function VendorLoyaltyPage() {
             {advisorChatEnabled ? <LoyaltyAdvisorChat /> : null}
 
             {canManage ? (
-              <Card>
+              <Card id="change-rewards" className="scroll-mt-4">
                 <CardHeader>
-                  <CardTitle className="text-lg">Change the program</CardTitle>
+                  <CardTitle className="text-lg">Change your rewards</CardTitle>
                   <CardDescription>
-                    Re-run the advisor to model and publish a new version.
-                    Existing customers keep every stamp they&apos;ve earned.
+                    Add a reward, drop one, or change what they cost. Your
+                    customers keep every point they&apos;ve already earned.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <LoyaltyConsultation
                     organizationId={organizationId}
                     hasActiveProgram
+                    aiEnabled={advisorChatEnabled}
                   />
                 </CardContent>
               </Card>
@@ -200,6 +255,7 @@ export default async function VendorLoyaltyPage() {
             <LoyaltyConsultation
               organizationId={organizationId}
               hasActiveProgram={false}
+              aiEnabled={advisorChatEnabled}
             />
             {advisorChatEnabled ? <LoyaltyAdvisorChat /> : null}
           </>

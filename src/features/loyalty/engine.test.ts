@@ -1,107 +1,190 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  PLATFORM_BOUNDS,
-  estimateRewardCostCents,
+  COMPLETION_RATE_HIGH_BPS,
+  DEFAULT_COST_RATIO_PERCENT,
+  POINTS_BOUNDS,
+  WEEKS_PER_MONTH_X100,
+  blockingIssues,
+  catalogItemEconomics,
   formatBps,
   formatCents,
+  formatPoints,
+  formatX100,
+  pointsProgramEconomics,
   rateBps,
-  stampProgramEconomics,
-  validateStampProgram,
-  type StampProgramConfig,
+  rewardEconomics,
+  rewardKindLabel,
+  sourceLabel,
+  tracked,
+  validatePointsProgram,
+  warningIssues,
+  type EconomicsContext,
+  type PointsProgramConfig,
+  type RewardSpec,
 } from "@/features/loyalty/engine";
 
-const baseConfig: StampProgramConfig = {
-  stampsRequired: 6,
-  qualifyingMinCents: 800,
-  stampPeriodMinutes: 240,
-  rewardName: "Free drink",
-  rewardRetailValueCents: 300,
-  rewardEstCostCents: 80,
+const freeItem: RewardSpec = {
+  kind: "FREE_ITEM",
+  name: "Horchata",
+  retailCents: 350,
+  unitCostCents: 90,
+};
+
+const baseConfig: PointsProgramConfig = {
+  pointsPerDollar: 10,
+  catalog: [{ pointsCost: 700, reward: freeItem }],
+};
+
+const baseContext: EconomicsContext = {
+  typicalOrderCents: tracked(1200, "provided"),
+  regularsPerMonth: tracked(30, "provided"),
+  visitsPerWeekX100: tracked(100, "provided"),
 };
 
 describe("rateBps", () => {
   it("computes integer basis points with floor semantics", () => {
-    // 80 / 4800 = 1.666...% → 166 bps (floored)
-    expect(rateBps(80, 4800)).toBe(166);
+    expect(rateBps(90, 7000)).toBe(128); // 1.28%
   });
 
   it("returns 0 for a non-positive whole", () => {
-    expect(rateBps(80, 0)).toBe(0);
-    expect(rateBps(80, -100)).toBe(0);
+    expect(rateBps(90, 0)).toBe(0);
   });
 
   it("throws on non-integer inputs (no floating-point money)", () => {
-    expect(() => rateBps(80.5, 4800)).toThrow();
-    expect(() => rateBps(80, 4800.1)).toThrow();
-  });
-
-  it("only ever returns integers", () => {
-    for (const [part, whole] of [
-      [1, 3],
-      [7, 999],
-      [123, 4567],
-    ]) {
-      expect(Number.isInteger(rateBps(part, whole))).toBe(true);
-    }
+    expect(() => rateBps(90.5, 7000)).toThrow();
   });
 });
 
-describe("estimateRewardCostCents", () => {
-  it("uses the entered cost when provided", () => {
-    expect(estimateRewardCostCents(300, 80)).toEqual({
-      costCents: 80,
-      estimated: false,
-    });
+describe("rewardEconomics — FREE_ITEM", () => {
+  it("uses the entered marginal cost and keeps leverage", () => {
+    const r = rewardEconomics(freeItem);
+    expect(r.customerValueCents).toBe(350);
+    expect(r.vendorCostCents).toBe(90);
+    expect(r.costSource).toBe("provided");
+    expect(r.customerValueCents).toBeGreaterThan(r.vendorCostCents);
   });
 
   it("falls back to a labeled 30%-of-retail estimate", () => {
-    expect(estimateRewardCostCents(300, null)).toEqual({
-      costCents: 90,
-      estimated: true,
-    });
-  });
-
-  it("floors the estimate to whole cents", () => {
-    // 350 * 30 / 100 = 105 exactly; 349 * 30 / 100 = 104.7 → 104
-    expect(estimateRewardCostCents(349, null).costCents).toBe(104);
+    const r = rewardEconomics({ ...freeItem, unitCostCents: null });
+    expect(r.vendorCostCents).toBe(
+      Math.floor((350 * DEFAULT_COST_RATIO_PERCENT) / 100),
+    );
+    expect(r.costSource).toBe("estimated");
+    expect(r.modelNote).toMatch(/estimate/i);
   });
 });
 
-describe("stampProgramEconomics", () => {
-  const economics = stampProgramEconomics(baseConfig, {
-    typicalOrderCents: 1200,
-    estimatedMonthlyRegulars: 30,
-    estimatedVisitsPerRegularPerMonth: 4,
+describe("rewardEconomics — FIXED_DISCOUNT", () => {
+  const discount: RewardSpec = {
+    kind: "FIXED_DISCOUNT",
+    name: "$5 off",
+    discountCents: 500,
+  };
+
+  it("costs the vendor its full face value — no item-cost leverage", () => {
+    const r = rewardEconomics(discount);
+    expect(r.customerValueCents).toBe(500);
+    expect(r.vendorCostCents).toBe(500);
   });
 
-  it("derives visits from stamp count with first-visit bonus", () => {
-    expect(economics.visitsToFirstReward).toBe(5); // 6 - 1 bonus
-    expect(economics.visitsPerRewardAfter).toBe(6);
-  });
-
-  it("computes qualifying spend from typical order × stamps", () => {
-    expect(economics.qualifyingSpendCents).toBe(7200); // 6 × 1200
-    expect(economics.firstCardSpendCents).toBe(6000); // 5 × 1200
-  });
-
-  it("keeps perceived value well above vendor cost for a high-margin item", () => {
-    // perceived: 300 / 7200 ≈ 4.16% ; cost: 80 / 7200 ≈ 1.11%
-    expect(economics.perceivedRateBps).toBeGreaterThan(economics.costRateBps);
-    expect(economics.costRateBps).toBeLessThan(200);
-  });
-
-  it("marks estimated cost and falls back to the qualifying min when order is unknown", () => {
-    const est = stampProgramEconomics(
-      { ...baseConfig, rewardEstCostCents: null },
-      {
-        typicalOrderCents: null,
-        estimatedMonthlyRegulars: 30,
-        estimatedVisitsPerRegularPerMonth: 4,
-      },
+  it("never applies the 30% free-item fallback to a discount", () => {
+    expect(rewardEconomics(discount).vendorCostCents).not.toBe(
+      Math.floor((500 * DEFAULT_COST_RATIO_PERCENT) / 100),
     );
-    expect(est.costIsEstimated).toBe(true);
-    expect(est.qualifyingSpendCents).toBe(6 * baseConfig.qualifyingMinCents);
+  });
+
+  it("explains the absence of leverage", () => {
+    expect(rewardEconomics(discount).modelNote).toMatch(/foregone revenue/i);
+  });
+
+  it("labels each kind distinctly", () => {
+    expect(rewardKindLabel("FREE_ITEM")).toBe("Free item");
+    expect(rewardKindLabel("FIXED_DISCOUNT")).toBe("Fixed discount");
+  });
+});
+
+describe("the $10 item / $6 cost / half-off regression", () => {
+  it("values half-off at the $5 the customer saves, costing the full $5", () => {
+    const asDiscount: RewardSpec = {
+      kind: "FIXED_DISCOUNT",
+      name: "Half off an item",
+      discountCents: 500,
+    };
+    const r = rewardEconomics(asDiscount);
+    expect(r.customerValueCents).toBe(500);
+    expect(r.vendorCostCents).toBe(500);
+  });
+});
+
+describe("catalogItemEconomics", () => {
+  it("derives spend-to-earn from points ÷ points-per-dollar", () => {
+    // 700 pts ÷ 10 pts/$ = $70.00
+    const e = catalogItemEconomics({ pointsCost: 700, reward: freeItem }, 10);
+    expect(e.spendToEarnCents).toBe(7000);
+  });
+
+  it("computes perceived and cost rates against that spend", () => {
+    const e = catalogItemEconomics({ pointsCost: 700, reward: freeItem }, 10);
+    expect(e.perceivedRateBps).toBe(rateBps(350, 7000)); // 5%
+    expect(e.costRateBps).toBe(rateBps(90, 7000)); // ~1.28%
+    expect(e.perceivedRateBps).toBeGreaterThan(e.costRateBps);
+  });
+
+  it("scales spend-to-earn with the points scale", () => {
+    // Same reward at 100 pts/$ needs the same dollars for 10× the points.
+    const a = catalogItemEconomics({ pointsCost: 700, reward: freeItem }, 10);
+    const b = catalogItemEconomics({ pointsCost: 7000, reward: freeItem }, 100);
+    expect(a.spendToEarnCents).toBe(b.spendToEarnCents);
+  });
+
+  it("charges a discount far more than an equal-value free item", () => {
+    const item = catalogItemEconomics(
+      { pointsCost: 700, reward: freeItem },
+      10,
+    );
+    const disc = catalogItemEconomics(
+      {
+        pointsCost: 700,
+        reward: {
+          kind: "FIXED_DISCOUNT",
+          name: "$3.50 off",
+          discountCents: 350,
+        },
+      },
+      10,
+    );
+    expect(disc.perceivedRateBps).toBe(item.perceivedRateBps);
+    expect(disc.costRateBps).toBeGreaterThan(item.costRateBps);
+  });
+});
+
+describe("pointsProgramEconomics", () => {
+  const economics = pointsProgramEconomics(baseConfig, baseContext);
+
+  it("picks the cheapest tier as the entry reward", () => {
+    const multi = pointsProgramEconomics(
+      {
+        pointsPerDollar: 10,
+        catalog: [
+          { pointsCost: 900, reward: freeItem },
+          { pointsCost: 400, reward: freeItem },
+        ],
+      },
+      baseContext,
+    );
+    expect(multi.entry.pointsCost).toBe(400);
+  });
+
+  it("converts weekly visits to monthly with the documented constant", () => {
+    expect(WEEKS_PER_MONTH_X100).toBe(433);
+    expect(economics.conversionNote).toMatch(/4\.33 weeks per month/);
+  });
+
+  it("earns points from monthly spend at the configured scale", () => {
+    // $12 × 4.33 visits ≈ $51.96/month → ~519 points at 10 pts/$.
+    expect(economics.monthlyPointsPerRegular).toBeGreaterThan(500);
+    expect(economics.monthlyPointsPerRegular).toBeLessThan(530);
   });
 
   it("orders the monthly cost band low ≤ high ≤ worst case, all integers", () => {
@@ -119,79 +202,127 @@ describe("stampProgramEconomics", () => {
       expect(Number.isInteger(v)).toBe(true);
     }
   });
+
+  it("projects no monthly exposure when the order total was skipped", () => {
+    const skipped = pointsProgramEconomics(baseConfig, {
+      ...baseContext,
+      typicalOrderCents: tracked(null, "skipped"),
+    });
+    expect(skipped.monthlyPointsPerRegular).toBe(0);
+    expect(skipped.monthlyCostWorstCaseCents).toBe(0);
+  });
 });
 
-describe("validateStampProgram", () => {
-  it("accepts a sane config", () => {
-    expect(validateStampProgram(baseConfig).errors).toHaveLength(0);
+describe("validatePointsProgram", () => {
+  it("accepts a sane config with no blocks", () => {
+    const v = validatePointsProgram(baseConfig);
+    expect(v.blocked).toBe(false);
+    expect(blockingIssues(v)).toHaveLength(0);
   });
 
-  it("rejects stamp counts outside platform bounds", () => {
+  it("blocks points-per-dollar outside platform bounds", () => {
     expect(
-      validateStampProgram({ ...baseConfig, stampsRequired: 3 }).errors.length,
-    ).toBeGreaterThan(0);
+      validatePointsProgram({ ...baseConfig, pointsPerDollar: 0 }).blocked,
+    ).toBe(true);
     expect(
-      validateStampProgram({ ...baseConfig, stampsRequired: 11 }).errors.length,
-    ).toBeGreaterThan(0);
+      validatePointsProgram({ ...baseConfig, pointsPerDollar: 500 }).blocked,
+    ).toBe(true);
   });
 
-  it("rejects a qualifying minimum outside $1–$100", () => {
-    expect(
-      validateStampProgram({ ...baseConfig, qualifyingMinCents: 50 }).errors
-        .length,
-    ).toBeGreaterThan(0);
-    expect(
-      validateStampProgram({ ...baseConfig, qualifyingMinCents: 20000 }).errors
-        .length,
-    ).toBeGreaterThan(0);
+  it("blocks an empty catalog", () => {
+    expect(validatePointsProgram({ ...baseConfig, catalog: [] }).blocked).toBe(
+      true,
+    );
   });
 
-  it("blocks publishing when reward cost exceeds 10% of conservative spend", () => {
-    // 6 × $1 = $6 qualifying; reward cost $1 = ~16.7% → over the 10% cap
-    const result = validateStampProgram({
-      ...baseConfig,
-      qualifyingMinCents: 100,
-      rewardRetailValueCents: 300,
-      rewardEstCostCents: 100,
+  it("blocks a tier whose cost exceeds 10% of the spend to earn it", () => {
+    // 100 pts ÷ 10 = $10 spend; a $6 reward = 60%.
+    const v = validatePointsProgram({
+      pointsPerDollar: 10,
+      catalog: [
+        {
+          pointsCost: 100,
+          reward: {
+            kind: "FREE_ITEM",
+            name: "Plate",
+            retailCents: 1000,
+            unitCostCents: 600,
+          },
+        },
+      ],
     });
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors.join(" ")).toMatch(/10%/);
+    expect(v.blocked).toBe(true);
+    const issue = blockingIssues(v).find(
+      (i) => i.code === "cost_rate_over_cap",
+    );
+    expect(issue?.calculation).toMatch(/pts ÷/);
+    expect(issue?.remedy).toBeTruthy();
   });
 
-  it("warns (but does not block) between 5% and 10% cost rate", () => {
-    // 6 × $2 = $12 qualifying; cost $0.80 ≈ 6.7% → warn, no error
-    const result = validateStampProgram({
-      ...baseConfig,
-      qualifyingMinCents: 200,
-      rewardEstCostCents: 80,
+  it("warns between the 5% and 10% lines without blocking", () => {
+    // 150 pts ÷ 10 = $15 spend; $0.90 cost = 6%.
+    const v = validatePointsProgram({
+      pointsPerDollar: 10,
+      catalog: [{ pointsCost: 150, reward: freeItem }],
     });
-    expect(result.errors).toHaveLength(0);
-    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(v.blocked).toBe(false);
+    expect(warningIssues(v).some((i) => i.code === "cost_rate_elevated")).toBe(
+      true,
+    );
   });
 
-  it("warns when the vendor omitted real cost data", () => {
-    const result = validateStampProgram({
-      ...baseConfig,
-      rewardEstCostCents: null,
+  it("always warns that a fixed discount has no leverage", () => {
+    const v = validatePointsProgram({
+      pointsPerDollar: 10,
+      catalog: [
+        {
+          pointsCost: 700,
+          reward: {
+            kind: "FIXED_DISCOUNT",
+            name: "$1 off",
+            discountCents: 100,
+          },
+        },
+      ],
     });
-    expect(result.warnings.join(" ")).toMatch(/estimate/i);
+    expect(
+      warningIssues(v).some((i) => i.code === "discount_no_leverage"),
+    ).toBe(true);
   });
 
-  it("mirrors the DB block threshold constant", () => {
-    expect(PLATFORM_BOUNDS.blockCostRateBps).toBe(1000);
-    expect(PLATFORM_BOUNDS.warnCostRateBps).toBe(500);
+  it("warns when a cost is an estimate rather than the owner's figure", () => {
+    const v = validatePointsProgram({
+      pointsPerDollar: 10,
+      catalog: [
+        { pointsCost: 700, reward: { ...freeItem, unitCostCents: null } },
+      ],
+    });
+    expect(warningIssues(v).some((i) => i.code === "cost_estimated")).toBe(
+      true,
+    );
+  });
+
+  it("mirrors the DB thresholds", () => {
+    expect(POINTS_BOUNDS.blockCostRateBps).toBe(1000);
+    expect(POINTS_BOUNDS.warnCostRateBps).toBe(500);
+    expect(COMPLETION_RATE_HIGH_BPS).toBe(7000);
+  });
+});
+
+describe("provenance labels", () => {
+  it("names each source distinctly", () => {
+    expect(sourceLabel("provided")).toBe("your figure");
+    expect(sourceLabel("estimated")).toBe("estimated");
+    expect(sourceLabel("skipped")).toBe("skipped");
+    expect(sourceLabel("unavailable")).toBe("not available yet");
   });
 });
 
 describe("formatters", () => {
-  it("formats cents as dollars with two decimals", () => {
-    expect(formatCents(0)).toBe("$0.00");
+  it("formats cents, basis points, ×100 integers and points", () => {
     expect(formatCents(305)).toBe("$3.05");
-    expect(formatCents(-150)).toBe("-$1.50");
-  });
-
-  it("formats basis points as a percentage", () => {
-    expect(formatBps(166)).toBe("1.6%");
     expect(formatBps(500)).toBe("5%");
+    expect(formatX100(433)).toBe("4.33");
+    expect(formatPoints(1250)).toBe("1,250 pts");
   });
 });

@@ -1,94 +1,61 @@
-"use client";
+import Link from "next/link";
+import { QrCode, Sparkles } from "lucide-react";
 
-import * as React from "react";
-import { Loader2, Stamp } from "lucide-react";
-
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { createLoyaltyClaimCode } from "@/features/loyalty/actions";
+import type { LoyaltyCatalogPreviewItem } from "@/lib/supabase/database.types";
+import { formatPoints, rewardDisplayLabel } from "@/features/loyalty/engine";
 
 /**
- * Public-profile entry point for starting a stamp card with a vendor. Getting
- * a code creates the customer's account (server-side, upsert) and returns a
- * short-lived code to show staff. Unauthenticated visitors are redirected to
- * sign in by the action's requireAuth guard.
+ * Rewards teaser on a vendor's public profile — the page the cart's printed QR
+ * lands on. It advertises the program and hands off to the checkout screen;
+ * it never mints a code itself, so a server component is enough.
  */
 export function LoyaltyJoinCard({
-  organizationId,
-  stampsRequired,
-  rewardName,
-  qualifyingMinCents,
+  orgSlug,
+  unitSlug,
+  pointsPerDollar,
+  catalog,
   earningPaused,
 }: {
-  organizationId: string;
-  stampsRequired: number;
-  rewardName: string;
-  qualifyingMinCents: number;
+  orgSlug: string;
+  unitSlug: string;
+  pointsPerDollar: number;
+  catalog: LoyaltyCatalogPreviewItem[];
   earningPaused: boolean;
 }) {
-  const [pending, setPending] = React.useState(false);
-  const [code, setCode] = React.useState<string | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function start() {
-    setError(null);
-    setPending(true);
-    try {
-      const result = await createLoyaltyClaimCode(organizationId);
-      if (result.ok) {
-        setCode(result.code);
-      } else {
-        setError(result.message);
-      }
-    } finally {
-      setPending(false);
-    }
-  }
-
-  const dollars = (qualifyingMinCents / 100).toFixed(
-    qualifyingMinCents % 100 === 0 ? 0 : 2,
-  );
+  const entry = [...catalog].sort((a, b) => a.points_cost - b.points_cost)[0];
 
   return (
     <div className="mt-6 rounded-lg border border-secondary/40 bg-accent/40 p-4">
       <p className="flex items-center gap-1.5 text-sm font-medium text-brand">
-        <Stamp className="size-4" aria-hidden="true" />
-        Loyalty stamp card
+        <Sparkles className="size-4" aria-hidden="true" />
+        Rewards
       </p>
       <p className="mt-1 text-sm">
-        Collect {stampsRequired} stamps — one per visit with a purchase of at
-        least ${dollars} — and unlock a free {rewardName}.
+        Earn {pointsPerDollar} points per $1 you spend here.
+        {entry
+          ? ` ${formatPoints(entry.points_cost)} gets you ${rewardDisplayLabel(
+              entry.reward_kind,
+              entry.reward_name,
+              entry.reward_value_cents,
+            )}.`
+          : ""}
       </p>
 
-      {code ? (
-        <div className="mt-3 rounded-md border border-secondary bg-card p-3 text-center">
-          <p className="text-xs text-muted-foreground">
-            Show this code to staff to add your stamp
+      <div className="mt-3">
+        {earningPaused ? (
+          <p className="text-sm text-muted-foreground">
+            Earning is paused right now.
           </p>
-          <p className="my-1 font-mono text-2xl font-bold tracking-widest">
-            {code}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Expires in 10 minutes · manage cards under My rewards
-          </p>
-        </div>
-      ) : (
-        <div className="mt-3">
-          {error ? (
-            <Alert variant="destructive" className="mb-3">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-          <Button size="sm" onClick={start} disabled={pending || earningPaused}>
-            {pending ? (
-              <Loader2 className="animate-spin" aria-hidden="true" />
-            ) : (
-              <Stamp aria-hidden="true" />
-            )}
-            {earningPaused ? "Stamps paused" : "Start your stamp card"}
+        ) : (
+          <Button asChild size="sm">
+            <Link href={`/vendors/${orgSlug}/${unitSlug}/rewards`}>
+              <QrCode aria-hidden="true" />
+              Show my checkout code
+            </Link>
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

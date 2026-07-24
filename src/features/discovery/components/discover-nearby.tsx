@@ -7,9 +7,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { NearbyLiveVendor } from "@/lib/supabase/database.types";
+import type { NearbyVendorLocation } from "@/lib/supabase/database.types";
 import { NearbyMap } from "@/features/discovery/components/nearby-map";
-import { NearbyVendorCard } from "@/features/discovery/components/nearby-vendor-card";
+import { NearbyLocationCard } from "@/features/discovery/components/nearby-location-card";
+import {
+  FILTERS,
+  HOTSPOT_EXPLANATION,
+  queryFlagsFor,
+  type FilterId,
+} from "@/features/discovery/location-state";
 
 const RADIUS_OPTIONS = [1, 3, 5, 10] as const;
 type RadiusMiles = (typeof RADIUS_OPTIONS)[number];
@@ -23,13 +29,18 @@ type SearchCenter = {
 
 type AreaSuggestion = { placeId: string; description: string };
 
+function flagsToQuery(filter: FilterId): string {
+  const f = queryFlagsFor(filter);
+  return `live=${f.live}&scheduled=${f.scheduled}&recurring=${f.recurring}&hotspots=${f.hotspots}`;
+}
+
 /**
- * Customer nearby-vendor discovery. Device location is requested ONLY
- * when the customer explicitly presses "Use my current location" — never
- * on page load — and their coordinates are used for the search query
- * only, never stored. Manual area search is always available (and is the
- * fallback when permission is denied). The Google Maps script loads only
- * when Map view is opened; the list works entirely without it.
+ * Customer discovery across all four location states.
+ *
+ * Device location is requested ONLY when the customer presses "Use my current
+ * location" — never on load — and their coordinates feed one query, never
+ * stored. The list works with no Maps script; the map loads lazily. The four
+ * states stay visibly distinct, and a hotspot is never shown as a vendor.
  */
 export function DiscoverNearby({ mapsApiKey }: { mapsApiKey: string | null }) {
   const [center, setCenter] = React.useState<SearchCenter | null>(null);
@@ -37,17 +48,23 @@ export function DiscoverNearby({ mapsApiKey }: { mapsApiKey: string | null }) {
   const [geoError, setGeoError] = React.useState<string | null>(null);
 
   const [radius, setRadius] = React.useState<RadiusMiles>(3);
-  const [vendors, setVendors] = React.useState<NearbyLiveVendor[] | null>(null);
-  const [vendorsError, setVendorsError] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState<FilterId>("all");
+  const [results, setResults] = React.useState<NearbyVendorLocation[] | null>(
+    null,
+  );
+  // A separate fetch used only when the main view is empty, so hotspots can be
+  // offered as a fallback without ever mixing into the primary vendor results.
+  const [fallback, setFallback] = React.useState<NearbyVendorLocation[]>([]);
+  const [resultsError, setResultsError] = React.useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = React.useState(0);
-  // Loading is DERIVED (search key vs last completed key) rather than a
-  // flag toggled inside the fetch effect — no setState-in-effect, and no
-  // way for the two to fall out of sync.
+
+  // Loading is DERIVED (search key vs last completed key), never a flag toggled
+  // inside the fetch effect — so the two can't fall out of sync.
   const searchKey = center
-    ? `${center.lat},${center.lng},${radius},${refreshNonce}`
+    ? `${center.lat},${center.lng},${radius},${filter},${refreshNonce}`
     : null;
   const [completedKey, setCompletedKey] = React.useState<string | null>(null);
-  const vendorsLoading = searchKey !== null && searchKey !== completedKey;
+  const loading = searchKey !== null && searchKey !== completedKey;
 
   const [view, setView] = React.useState<"list" | "map">("list");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -151,54 +168,72 @@ export function DiscoverNearby({ mapsApiKey }: { mapsApiKey: string | null }) {
     }
   }
 
-  // Fetch nearby vendors whenever the search center, radius, or an
-  // explicit refresh changes. Aborted on change so stale responses never
-  // overwrite newer ones.
+  // Fetch results whenever the center, radius, filter, or an explicit refresh
+  // changes. Aborted on change so a stale response never overwrites a newer one.
   React.useEffect(() => {
     if (!center || !searchKey) {
       return;
     }
     const controller = new AbortController();
-    fetch(
-      `/api/discover/nearby?lat=${center.lat}&lng=${center.lng}&radius=${radius}`,
-      { signal: controller.signal },
-    )
+    const base = `lat=${center.lat}&lng=${center.lng}&radius=${radius}`;
+
+    fetch(`/api/discover/nearby?${base}&${flagsToQuery(filter)}`, {
+      signal: controller.signal,
+    })
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`nearby lookup failed: ${response.status}`);
         }
         const data = (await response.json()) as {
-          vendors: NearbyLiveVendor[];
+          results: NearbyVendorLocation[];
         };
-        setVendors(data.vendors);
-        setVendorsError(null);
+        setResults(data.results);
+        setResultsError(null);
         setSelectedId(null);
+
+        // Fallback: if the customer's chosen view has nothing, offer nearby
+        // hotspots — but only when they weren't already asking for hotspots.
+        if (data.results.length === 0 && filter !== "hotspots") {
+          try {
+            const spotRes = await fetch(
+              `/api/discover/nearby?${base}&live=false&scheduled=false&recurring=false&hotspots=true`,
+              { signal: controller.signal },
+            );
+            const spots = (await spotRes.json()) as {
+              results: NearbyVendorLocation[];
+            };
+            setFallback(spots.results ?? []);
+          } catch {
+            setFallback([]);
+          }
+        } else {
+          setFallback([]);
+        }
         setCompletedKey(searchKey);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
-        setVendorsError("Couldn't load nearby vendors. Please try again.");
+        setResultsError("Couldn't load nearby vendors. Please try again.");
         setCompletedKey(searchKey);
       });
     return () => controller.abort();
-  }, [center, radius, refreshNonce, searchKey]);
+  }, [center, radius, filter, refreshNonce, searchKey]);
 
   function refresh() {
     if (center?.source === "device") {
-      // Re-acquire the device position too, not just re-query — the
-      // customer may have moved since the last search.
       requestDeviceLocation();
     }
     setRefreshNonce((n) => n + 1);
   }
 
-  const handleSelect = React.useCallback((vendorUnitId: string) => {
-    setSelectedId((current) =>
-      current === vendorUnitId ? null : vendorUnitId,
-    );
+  const handleSelect = React.useCallback((resultId: string) => {
+    setSelectedId((current) => (current === resultId ? null : resultId));
   }, []);
+
+  const isEmpty = results !== null && results.length === 0;
+  const mapData = isEmpty ? fallback : (results ?? []);
 
   return (
     <div className="space-y-6">
@@ -295,6 +330,30 @@ export function DiscoverNearby({ mapsApiKey }: { mapsApiKey: string | null }) {
             </Button>
           </div>
 
+          {/* State filters — keyboard-reachable, each toggling one state set. */}
+          <div
+            role="group"
+            aria-label="Filter by location status"
+            className="flex flex-wrap gap-1.5"
+          >
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id)}
+                aria-pressed={filter === f.id}
+                className={cn(
+                  "cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors",
+                  filter === f.id
+                    ? "border-secondary bg-secondary font-medium text-secondary-foreground"
+                    : "border-border text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground",
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           <div
             role="tablist"
             aria-label="Results view"
@@ -332,61 +391,109 @@ export function DiscoverNearby({ mapsApiKey }: { mapsApiKey: string | null }) {
             </button>
           </div>
 
-          {vendorsError && !vendorsLoading ? (
+          {resultsError && !loading ? (
             <Alert variant="destructive">
-              <AlertDescription>{vendorsError}</AlertDescription>
+              <AlertDescription>{resultsError}</AlertDescription>
             </Alert>
           ) : null}
 
-          {vendorsLoading && vendors === null ? (
+          {loading && results === null ? (
             <p className="text-sm text-muted-foreground">
               Looking for vendors near you…
             </p>
           ) : null}
 
-          {vendors !== null ? (
-            vendors.length === 0 ? (
-              <div className="rounded-lg border border-border p-6 text-center">
-                <p className="font-medium">
-                  No vendors are live within {radius}{" "}
-                  {radius === 1 ? "mile" : "miles"} right now.
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Try a larger radius, a different area, or check back later —
-                  vendors appear here the moment they go live.
-                </p>
-              </div>
-            ) : (
-              <>
-                {view === "map" ? (
-                  <NearbyMap
-                    apiKey={mapsApiKey}
-                    center={{ lat: center.lat, lng: center.lng }}
-                    centerLabel={center.label}
-                    vendors={vendors}
-                    selectedId={selectedId}
-                    onSelect={handleSelect}
-                  />
-                ) : null}
+          {results !== null ? (
+            <>
+              {view === "map" && mapData.length > 0 ? (
+                <NearbyMap
+                  apiKey={mapsApiKey}
+                  center={{ lat: center.lat, lng: center.lng }}
+                  centerLabel={center.label}
+                  results={mapData}
+                  selectedId={selectedId}
+                  onSelect={handleSelect}
+                />
+              ) : null}
+
+              {results.length > 0 ? (
                 <ul
                   className={cn(
                     "space-y-3",
                     view === "map" ? "max-h-72 overflow-y-auto" : "",
                   )}
                 >
-                  {vendors.map((vendor) => (
-                    <NearbyVendorCard
-                      key={vendor.vendor_unit_id}
-                      vendor={vendor}
-                      selected={selectedId === vendor.vendor_unit_id}
+                  {results.map((result) => (
+                    <NearbyLocationCard
+                      key={result.result_id}
+                      result={result}
+                      selected={selectedId === result.result_id}
                       onSelect={handleSelect}
                     />
                   ))}
                 </ul>
-              </>
-            )
+              ) : (
+                <EmptyState
+                  radius={radius}
+                  filter={filter}
+                  fallback={fallback}
+                  selectedId={selectedId}
+                  onSelect={handleSelect}
+                />
+              )}
+            </>
           ) : null}
         </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * What a customer sees when their chosen view is empty. Confirmed vendors are
+ * always preferred, so the fallback offers nearby hotspots only — and says
+ * plainly that nobody is confirmed there.
+ */
+function EmptyState({
+  radius,
+  filter,
+  fallback,
+  selectedId,
+  onSelect,
+}: {
+  radius: number;
+  filter: FilterId;
+  fallback: NearbyVendorLocation[];
+  selectedId: string | null;
+  onSelect: (resultId: string) => void;
+}) {
+  const noun = filter === "hotspots" ? "food-vendor hotspots" : "vendors";
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border p-6 text-center">
+        <p className="font-medium">
+          No {noun} within {radius} {radius === 1 ? "mile" : "miles"} right now.
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Try a larger radius, a different area, or check back later.
+        </p>
+      </div>
+
+      {filter !== "hotspots" && fallback.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">{HOTSPOT_EXPLANATION}</p>
+          <ul className="space-y-3">
+            {fallback.map((result) => (
+              <NearbyLocationCard
+                key={result.result_id}
+                result={result}
+                selected={selectedId === result.result_id}
+                onSelect={onSelect}
+              />
+            ))}
+          </ul>
+        </div>
       ) : null}
     </div>
   );

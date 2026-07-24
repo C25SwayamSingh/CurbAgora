@@ -9,7 +9,7 @@ import { idleState } from "@/features/authentication/action-state";
 import { setLoyaltyPausedAction } from "@/features/loyalty/actions";
 
 /**
- * Owner/manager control to pause new stamps and/or redemptions. Pausing never
+ * Owner/manager control to pause new points and/or redemptions. Pausing never
  * erases earned progress — it only stops new activity — so each toggle is a
  * one-click form that flips a single flag and keeps the other as-is.
  */
@@ -37,7 +37,7 @@ export function LoyaltyPauseControl({
             value={String(redemptionPaused)}
           />
           <Button type="submit" variant="outline" size="sm">
-            {earningPaused ? "Resume new stamps" : "Pause new stamps"}
+            {earningPaused ? "Resume earning" : "Pause earning"}
           </Button>
         </form>
         <form action={formAction}>

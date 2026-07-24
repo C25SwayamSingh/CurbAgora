@@ -181,10 +181,10 @@ export default async function VendorPublicPreviewPage({
 
       {loyalty ? (
         <LoyaltyJoinCard
-          organizationId={loyalty.organization_id}
-          stampsRequired={loyalty.stamps_required}
-          rewardName={loyalty.reward_name}
-          qualifyingMinCents={loyalty.qualifying_min_cents}
+          orgSlug={orgSlug}
+          unitSlug={unitSlug}
+          pointsPerDollar={loyalty.points_per_dollar}
+          catalog={loyalty.catalog}
           earningPaused={loyalty.earning_paused}
         />
       ) : null}

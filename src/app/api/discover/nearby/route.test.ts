@@ -36,7 +36,7 @@ describe("GET /api/discover/nearby", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it("passes validated coordinates to the database function", async () => {
+  it("passes validated coordinates and default filters to the database function", async () => {
     rpcMock.mockResolvedValue({ data: [], error: null });
 
     const response = await GET(
@@ -44,22 +44,59 @@ describe("GET /api/discover/nearby", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith("nearby_live_vendors", {
+    // Default view: real vendors across all three confirmed states, hotspots
+    // OFF — an empty parking zone must never surface unless explicitly asked.
+    expect(rpcMock).toHaveBeenCalledWith("nearby_vendor_locations", {
       p_latitude: 40.44,
       p_longitude: -74.46,
       p_radius_miles: 5,
+      p_include_live: true,
+      p_include_scheduled: true,
+      p_include_recurring: true,
+      p_include_hotspots: false,
     });
-    expect(await response.json()).toEqual({ vendors: [] });
+    expect(await response.json()).toEqual({ results: [] });
   });
 
-  it("returns the vendors from the database function", async () => {
-    const vendor = { vendor_unit_id: "u1", name: "Cart", distance_miles: 0.4 };
-    rpcMock.mockResolvedValue({ data: [vendor], error: null });
+  it("passes explicit filter flags through to the database function", async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+
+    await GET(
+      request({
+        lat: "40",
+        lng: "-74",
+        radius: "3",
+        live: "false",
+        scheduled: "false",
+        recurring: "false",
+        hotspots: "true",
+      }),
+    );
+
+    expect(rpcMock).toHaveBeenCalledWith("nearby_vendor_locations", {
+      p_latitude: 40,
+      p_longitude: -74,
+      p_radius_miles: 3,
+      p_include_live: false,
+      p_include_scheduled: false,
+      p_include_recurring: false,
+      p_include_hotspots: true,
+    });
+  });
+
+  it("returns the results from the database function", async () => {
+    const result = {
+      result_id: "LIVE:u1",
+      state: "LIVE",
+      name: "Cart",
+      distance_miles: 0.4,
+    };
+    rpcMock.mockResolvedValue({ data: [result], error: null });
 
     const response = await GET(request({ lat: "40", lng: "-74", radius: "3" }));
     const body = await response.json();
 
-    expect(body.vendors).toEqual([vendor]);
+    expect(body.results).toEqual([result]);
   });
 
   it("returns a safe 502 when the database call fails, without leaking details", async () => {

@@ -2,12 +2,8 @@ import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
 
-import {
-  formatBps,
-  formatCents,
-  type StampProgramEconomics,
-} from "@/features/loyalty/engine";
-import type { LoyaltyRecommendation } from "@/features/loyalty/advisor";
+import { ADVISOR_MODEL_ID } from "@/features/loyalty/advisor-model";
+import { formatCents } from "@/features/loyalty/engine";
 
 /**
  * OPTIONAL conversational layer over the deterministic advisor.
@@ -25,7 +21,7 @@ import type { LoyaltyRecommendation } from "@/features/loyalty/advisor";
  * deterministic recommendations and publish flow work with or without it.
  */
 
-const MODEL = "claude-opus-4-8";
+const MODEL = ADVISOR_MODEL_ID;
 const MAX_TOKENS = 1024;
 
 export function isLoyaltyConsultantConfigured(): boolean {
@@ -37,7 +33,7 @@ consultant for independent food-cart, food-truck, and small-restaurant owners.
 
 Hard rules you must never break:
 - You do NOT set, change, publish, pause, or calculate any loyalty program, \
-balance, reward, point, stamp, price, or financial limit. A deterministic \
+balance, reward, point, price, or financial limit. A deterministic \
 server-side engine is the sole authority over all of those. If the owner asks \
 you to make a change, explain the tradeoff and tell them to use the Publish or \
 Pause controls on the page — you cannot do it for them.
@@ -54,33 +50,17 @@ platform's 30%-of-menu-price fallback until the owner enters real cost data.
 - No guarantees about revenue or results. Loyalty customers may already be \
 more engaged; correlation is not causation.
 - Keep answers short, concrete, and free of loyalty-accounting jargon. Favor \
-"three more visits" over point math.`;
-
-/** Compact, model-safe summary of one recommendation for the CONTEXT block. */
-function recommendationFacts(rec: LoyaltyRecommendation): string {
-  const e = rec.economics;
-  return [
-    `- ${rec.title}`,
-    `  earn: ${rec.earnRule}`,
-    `  reward: ${rec.rewardRule}`,
-    `  visits to first reward: ${rec.economics.visitsToFirstReward}; after: ${rec.economics.visitsPerRewardAfter}`,
-    `  customer-perceived rate: ${formatBps(e.perceivedRateBps)}; estimated vendor cost rate: ${formatBps(e.costRateBps)}${e.costIsEstimated ? " (estimated)" : ""}`,
-    `  estimated monthly reward cost: ${formatCents(e.monthlyCostLowCents)}–${formatCents(e.monthlyCostHighCents)} (completion-band assumption)`,
-  ].join("\n");
-}
+"about $7 more to your next reward" over raw point math. Never use the words \
+"liability", "breakage", "redemption rate", or "outstanding balance" with an \
+owner — say "what it would cost you if everyone cashed in" instead.`;
 
 export type ConsultantContext = {
-  recommendations: LoyaltyRecommendation[];
-  activeProgram?: {
-    stampsRequired: number;
-    rewardName: string;
-    economics?: StampProgramEconomics;
-  } | null;
+  activeProgram?: { pointsPerDollar: number } | null;
   stats?: {
     members: number;
-    stampsIssued: number;
+    pointsIssued: number;
     rewardsRedeemed: number;
-    outstandingStamps: number;
+    outstandingPoints: number;
     estimatedLiabilityCents: number;
   } | null;
 };
@@ -89,22 +69,16 @@ function buildContextBlock(ctx: ConsultantContext): string {
   const parts: string[] = [];
   if (ctx.activeProgram) {
     parts.push(
-      `ACTIVE PROGRAM: ${ctx.activeProgram.stampsRequired}-stamp card, reward "${ctx.activeProgram.rewardName}".`,
+      `ACTIVE PROGRAM: spend-based points, ${ctx.activeProgram.pointsPerDollar} points per $1 of staff-verified eligible spend.`,
     );
   } else {
     parts.push("ACTIVE PROGRAM: none published yet.");
   }
   if (ctx.stats) {
     parts.push(
-      `STATS: ${ctx.stats.members} members; ${ctx.stats.stampsIssued} stamps issued; ` +
-        `${ctx.stats.rewardsRedeemed} rewards redeemed; ${ctx.stats.outstandingStamps} outstanding stamps; ` +
-        `estimated outstanding reward liability ${formatCents(ctx.stats.estimatedLiabilityCents)}.`,
-    );
-  }
-  if (ctx.recommendations.length > 0) {
-    parts.push(
-      "CURRENT DETERMINISTIC RECOMMENDATIONS (the authority — do not alter):\n" +
-        ctx.recommendations.map(recommendationFacts).join("\n"),
+      `STATS: ${ctx.stats.members} members; ${ctx.stats.pointsIssued} points issued; ` +
+        `${ctx.stats.rewardsRedeemed} rewards redeemed; ${ctx.stats.outstandingPoints} outstanding points; ` +
+        `cost if every outstanding point were cashed in at once ${formatCents(ctx.stats.estimatedLiabilityCents)}.`,
     );
   }
   return parts.join("\n\n");

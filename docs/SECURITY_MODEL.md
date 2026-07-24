@@ -309,9 +309,37 @@ follow-up work.
 - Admin-assisted MFA factor recovery is not implemented (would require
   service-role tooling outside the app).
 
+## Loyalty Checkout Identification
+
+Full model in `docs/decisions/loyalty-system.md` §10. Security-relevant
+invariants:
+
+- The dynamic customer QR carries an opaque 256-bit token and nothing else —
+  no identifier, contact detail, or balance. Only its **SHA-256 digest** is
+  stored, so no database reader can reconstruct a scannable code.
+- Sessions are one-time, expire in 5 minutes, and are bound to one customer
+  and one organization. Consumption and the ledger insert happen under a
+  single `FOR UPDATE` lock in one transaction, keyed for idempotency by the
+  session id.
+- The 4-digit fallback is a lookup handle, never an authenticator. Ten failed
+  4-digit lookups per staff account per org per 10 minutes throttles further
+  attempts; five failures against one session locks it. The QR path is not
+  throttled — a 256-bit token is not guessable, and limiting it would only
+  strand vendors.
+- Failed identifications are **returned as outcomes rather than raised**, so
+  the audit row survives the transaction the rate limiter depends on.
+  Authorization violations still raise and abort.
+- Secret columns (`code`, `numeric_code`, `token_digest`) are excluded from
+  the `authenticated` column grant — they are reachable only through
+  SECURITY DEFINER functions, never over PostgREST.
+- Camera access is requested only on an explicit tap, frames never leave the
+  device, and every exit path stops all MediaStream tracks.
+- The permanent printed vendor QR encodes only a public URL and cannot award
+  anything; it routes, nothing more.
+
 ## Out of Scope (This Phase)
 
 - Payment processing and PCI-related flows
 - SMS delivery and phone verification
-- Loyalty transaction processing
+- POS integration (staff still enters the verified eligible subtotal)
 - Admin moderation tooling (secure shell only)

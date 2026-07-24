@@ -19,6 +19,55 @@ export type PreferredMode = "customer" | "vendor";
 export type OnboardingStatus = "not_started" | "in_progress" | "complete";
 export type OrganizationStatus = "active" | "suspended" | "archived";
 export type OrganizationRole = "owner" | "manager" | "staff";
+
+/** Where a piece of location knowledge came from. */
+export type LocationSourceType =
+  | "VENDOR_LIVE"
+  | "VENDOR_RECURRING"
+  | "VENDOR_SCHEDULED"
+  | "EVENT_ORGANIZER"
+  | "MUNICIPAL_OPEN_DATA"
+  | "THIRD_PARTY_SCHEDULE"
+  | "SOCIAL_MEDIA_LEAD"
+  | "COMMUNITY_REPORT";
+
+/** How much that source has been vouched for. */
+export type LocationVerification =
+  "CONFIRMED" | "EXPECTED" | "UNVERIFIED" | "STALE" | "REJECTED";
+
+/**
+ * The four public location states, as returned by nearby_vendor_locations.
+ * Ordered by the rank the query assigns them.
+ */
+export type LocationState =
+  "LIVE" | "SCHEDULED_NOW" | "RECURRING_NOW" | "SCHEDULED_UPCOMING" | "HOTSPOT";
+
+/**
+ * One ranked discovery result. `vendor_unit_id` and every vendor field are
+ * null for a HOTSPOT — a hotspot is a place, and the type says so.
+ */
+export type NearbyVendorLocation = {
+  result_id: string;
+  state: LocationState;
+  rank: number;
+  vendor_unit_id: string | null;
+  organization_slug: string | null;
+  unit_slug: string | null;
+  name: string | null;
+  unit_type: VendorUnitType | null;
+  cuisine_categories: string[] | null;
+  primary_image_path: string | null;
+  latitude: number;
+  longitude: number;
+  public_label: string;
+  reason_label: string;
+  source_type: LocationSourceType;
+  verification: LocationVerification;
+  last_verified_at: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  distance_miles: number;
+};
 export type MembershipStatus = "invited" | "active" | "revoked";
 export type VendorUnitType =
   "food_cart" | "food_truck" | "stand" | "stall" | "pop_up";
@@ -33,14 +82,39 @@ export type CuisineCategory = string;
 export type PaymentMethod =
   "cash" | "credit_card" | "debit_card" | "mobile_pay" | "contactless";
 export type LoyaltyEntryType =
-  | "PURCHASE_STAMP"
-  | "FIRST_VISIT_BONUS"
+  | "PURCHASE_POINTS"
+  | "PROMO_BONUS"
   | "REDEMPTION"
   | "REVERSAL"
-  | "MANUAL_ADJUSTMENT";
+  | "MANUAL_ADJUSTMENT"
+  // retained for historical stamp-era rows:
+  | "PURCHASE_STAMP"
+  | "FIRST_VISIT_BONUS";
 export type LoyaltyProgramVersionStatus = "active" | "archived";
+
+/**
+ * How a reward is priced. FREE_ITEM has cost leverage (menu price ≫ vendor
+ * cost); FIXED_DISCOUNT costs its full face value. Kept explicit so the two
+ * are never modeled interchangeably.
+ */
+export type LoyaltyRewardKind = "FREE_ITEM" | "FIXED_DISCOUNT";
+
+/** One reward tier as exposed on the public program preview. */
+export type LoyaltyCatalogPreviewItem = {
+  id: string;
+  points_cost: number;
+  reward_kind: LoyaltyRewardKind;
+  reward_name: string;
+  reward_value_cents: number;
+};
+/**
+ * Checkout-session lifecycle. `pending` is ACTIVE and `confirmed` is CONSUMED
+ * — the lowercase names are kept from the stamp era so historical rows and
+ * their ledger references stay valid. `locked` is set after repeated failed
+ * lookups against the same session.
+ */
 export type LoyaltyClaimStatus =
-  "pending" | "confirmed" | "cancelled" | "expired";
+  "pending" | "confirmed" | "cancelled" | "expired" | "locked";
 export type LoyaltyRedemptionStatus =
   "requested" | "redeemed" | "cancelled" | "expired";
 
@@ -120,6 +194,28 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      /**
+       * `token_digest` is deliberately absent: it is excluded from the
+       * `authenticated` column grant, so no client query can return it.
+       */
+      organization_invitations: {
+        Row: {
+          id: string;
+          organization_id: string;
+          email: string;
+          role: OrganizationRole;
+          first_name: string;
+          status: "pending" | "accepted" | "revoked" | "expired";
+          invited_by: string;
+          expires_at: string;
+          accepted_at: string | null;
+          accepted_by: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
         Relationships: [];
       };
       organization_members: {
@@ -246,6 +342,106 @@ export type Database = {
         };
         Relationships: [];
       };
+      vendor_recurring_locations: {
+        Row: {
+          id: string;
+          organization_id: string;
+          vendor_unit_id: string;
+          latitude: number;
+          longitude: number;
+          public_label: string;
+          timezone: string;
+          days_of_week: number[];
+          start_time: string;
+          end_time: string;
+          effective_from: string | null;
+          effective_to: string | null;
+          is_active: boolean;
+          last_confirmed_at: string;
+          created_by: string;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      vendor_scheduled_occurrences: {
+        Row: {
+          id: string;
+          organization_id: string | null;
+          vendor_unit_id: string | null;
+          organizer_name: string | null;
+          event_name: string | null;
+          starts_at: string;
+          ends_at: string;
+          latitude: number;
+          longitude: number;
+          public_label: string;
+          status: "scheduled" | "cancelled" | "completed";
+          source_type: LocationSourceType;
+          source_url: string | null;
+          source_record_id: string | null;
+          verification: LocationVerification;
+          confirmed_at: string | null;
+          confirmed_by: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      /**
+       * A place, never a vendor. There is deliberately no vendor_unit_id:
+       * association is a reviewer action that creates a separate vendor-owned
+       * row, so an import can never claim a vendor.
+       */
+      location_hotspots: {
+        Row: {
+          id: string;
+          latitude: number;
+          longitude: number;
+          boundary: Json | null;
+          public_name: string;
+          source_type: LocationSourceType;
+          source_url: string | null;
+          source_record_id: string | null;
+          valid_from: string | null;
+          valid_until: string | null;
+          last_imported_at: string | null;
+          verification: LocationVerification;
+          review_notes: string | null;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      location_reports: {
+        Row: {
+          id: string;
+          reported_by: string | null;
+          latitude: number;
+          longitude: number;
+          note: string | null;
+          vendor_unit_id: string | null;
+          source_type: LocationSourceType;
+          verification: LocationVerification;
+          review_notes: string | null;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       vendor_location_sessions: {
         Row: {
           id: string;
@@ -315,14 +511,36 @@ export type Database = {
           organization_id: string;
           version_number: number;
           status: LoyaltyProgramVersionStatus;
-          stamps_required: number;
-          qualifying_min_cents: number;
-          stamp_period_minutes: number;
-          reward_name: string;
-          reward_retail_value_cents: number;
-          reward_est_cost_cents: number | null;
+          /** Points earned per verified dollar of eligible spend. */
+          points_per_dollar: number | null;
           advisor_snapshot: Json | null;
           created_by: string;
+          created_at: string;
+          // Retained stamp-era columns (unused by the points model).
+          stamps_required: number | null;
+          qualifying_min_cents: number | null;
+          stamp_period_minutes: number | null;
+          reward_name: string | null;
+          reward_retail_value_cents: number | null;
+          reward_est_cost_cents: number | null;
+          reward_kind: LoyaltyRewardKind;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      loyalty_reward_catalog_items: {
+        Row: {
+          id: string;
+          program_version_id: string;
+          organization_id: string;
+          sort_index: number;
+          points_cost: number;
+          reward_kind: LoyaltyRewardKind;
+          reward_name: string;
+          /** Menu price for a free item; discount face value for a discount. */
+          reward_value_cents: number;
+          reward_est_cost_cents: number | null;
           created_at: string;
         };
         Insert: never;
@@ -334,25 +552,52 @@ export type Database = {
           id: string;
           organization_id: string;
           user_id: string;
-          stamp_balance: number;
-          lifetime_stamps: number;
+          point_balance: number;
+          lifetime_points: number;
           created_at: string;
           updated_at: string;
+          // Retained stamp-era columns (unused by the points model).
+          stamp_balance: number;
+          lifetime_stamps: number;
         };
         Insert: never;
         Update: never;
         Relationships: [];
       };
+      /**
+       * Checkout sessions. Named for the stamp-era claim codes it grew out of;
+       * a row is now identified by a QR token digest plus a 4-digit code.
+       * Secret columns (`code`, `numeric_code`, `token_digest`) are not
+       * granted to `authenticated` — they resolve only through the definer
+       * functions, so they are absent from anything a client can select.
+       */
       loyalty_claim_codes: {
         Row: {
           id: string;
           account_id: string;
           organization_id: string;
-          code: string;
+          vendor_unit_id: string | null;
           status: LoyaltyClaimStatus;
           expires_at: string;
           confirmed_by: string | null;
           confirmed_at: string | null;
+          created_at: string;
+          failed_attempts: number;
+          invalidated_reason: string | null;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      loyalty_checkout_lookups: {
+        Row: {
+          id: string;
+          organization_id: string;
+          actor_user_id: string;
+          method: "qr" | "code4";
+          outcome:
+            "resolved" | "not_found" | "expired" | "consumed" | "throttled";
+          session_id: string | null;
           created_at: string;
         };
         Insert: never;
@@ -367,12 +612,15 @@ export type Database = {
           program_version_id: string;
           code: string;
           status: LoyaltyRedemptionStatus;
-          stamps_spent: number;
+          points_spent: number | null;
+          catalog_item_id: string | null;
           reward_name: string;
           expires_at: string;
           confirmed_by: string | null;
           confirmed_at: string | null;
           created_at: string;
+          /** Retained stamp-era column. */
+          stamps_spent: number | null;
         };
         Insert: never;
         Update: never;
@@ -385,7 +633,8 @@ export type Database = {
           organization_id: string;
           program_version_id: string;
           entry_type: LoyaltyEntryType;
-          delta_stamps: number;
+          delta_points: number | null;
+          verified_subtotal_cents: number | null;
           reason: string | null;
           idempotency_key: string;
           reverses_entry_id: string | null;
@@ -393,6 +642,8 @@ export type Database = {
           redemption_id: string | null;
           actor_user_id: string;
           created_at: string;
+          /** Retained stamp-era column. */
+          delta_stamps: number | null;
         };
         Insert: never;
         Update: never;
@@ -408,11 +659,8 @@ export type Database = {
           earning_paused: boolean;
           redemption_paused: boolean;
           program_version_id: string;
-          stamps_required: number;
-          qualifying_min_cents: number;
-          stamp_period_minutes: number;
-          reward_name: string;
-          reward_retail_value_cents: number;
+          points_per_dollar: number;
+          catalog: LoyaltyCatalogPreviewItem[];
         };
         Relationships: [];
       };
@@ -459,6 +707,36 @@ export type Database = {
       };
     };
     Functions: {
+      organization_create_invitation: {
+        Args: {
+          p_organization_id: string;
+          p_email: string;
+          p_role: OrganizationRole;
+          p_first_name: string;
+          p_token_digest: string;
+        };
+        Returns: { invitation_id: string; expires_at: string }[];
+      };
+      organization_invitation_preview: {
+        Args: { p_token_digest: string };
+        /** Every column but `outcome` is null when the token is unknown. */
+        Returns: {
+          outcome: string;
+          organization_name: string | null;
+          role: OrganizationRole | null;
+          first_name: string | null;
+          invited_email: string | null;
+          expires_at: string | null;
+        }[];
+      };
+      organization_accept_invitation: {
+        Args: { p_token_digest: string };
+        Returns: { organization_id: string; role: OrganizationRole }[];
+      };
+      organization_revoke_invitation: {
+        Args: { p_invitation_id: string };
+        Returns: undefined;
+      };
       create_organization_with_owner: {
         Args: {
           p_legal_name: string;
@@ -486,12 +764,8 @@ export type Database = {
       loyalty_publish_program: {
         Args: {
           p_organization_id: string;
-          p_stamps_required: number;
-          p_qualifying_min_cents: number;
-          p_stamp_period_minutes: number;
-          p_reward_name: string;
-          p_reward_retail_value_cents: number;
-          p_reward_est_cost_cents?: number | null;
+          p_points_per_dollar: number;
+          p_catalog: Json;
           p_advisor_snapshot?: Json | null;
         };
         Returns: string;
@@ -504,20 +778,69 @@ export type Database = {
         };
         Returns: undefined;
       };
-      loyalty_create_claim_code: {
-        Args: { p_organization_id: string };
-        Returns: { code: string; expires_at: string }[];
-      };
-      loyalty_confirm_claim: {
-        Args: { p_organization_id: string; p_code: string };
+      loyalty_start_checkout_session: {
+        Args: {
+          p_organization_id: string;
+          p_token_digest: string;
+          p_code_candidates: string[];
+          /**
+           * Optional in SQL, but always send it — even as null. PostgREST
+           * matches on the full named-argument set, so omitting the key
+           * resolves to no function at all (PGRST202).
+           */
+          p_vendor_unit_id: string | null;
+        };
         Returns: {
-          stamp_balance: number;
-          stamps_required: number;
-          first_visit: boolean;
+          session_id: string;
+          numeric_code: string;
+          expires_at: string;
+        }[];
+      };
+      loyalty_resolve_checkout_session: {
+        Args: {
+          p_organization_id: string;
+          p_method: "qr" | "code4";
+          /** Token DIGEST for `qr`, the 4 digits for `code4`. */
+          p_value: string;
+        };
+        /**
+         * A miss returns `outcome` with every other column null, rather than
+         * raising — an exception would roll back the audit row the rate
+         * limiter counts. Only `outcome: "resolved"` carries member data.
+         */
+        Returns: {
+          outcome:
+            "resolved" | "not_found" | "expired" | "consumed" | "throttled";
+          session_id: string | null;
+          display_name: string | null;
+          member_ref: string | null;
+          point_balance: number | null;
+          expires_at: string | null;
+        }[];
+      };
+      loyalty_award_points: {
+        Args: {
+          p_organization_id: string;
+          p_session_id: string;
+          p_eligible_subtotal_cents: number;
+        };
+        Returns: { points_awarded: number; point_balance: number }[];
+      };
+      loyalty_cancel_checkout_session: {
+        Args: { p_session_id: string };
+        Returns: undefined;
+      };
+      loyalty_checkout_session_status: {
+        Args: { p_session_id: string };
+        Returns: {
+          status: LoyaltyClaimStatus;
+          expires_at: string;
+          points_awarded: number;
+          point_balance: number;
         }[];
       };
       loyalty_request_redemption: {
-        Args: { p_organization_id: string };
+        Args: { p_organization_id: string; p_catalog_item_id: string };
         Returns: { code: string; reward_name: string; expires_at: string }[];
       };
       loyalty_confirm_redemption: {
@@ -529,18 +852,35 @@ export type Database = {
         Returns: undefined;
       };
       loyalty_adjust_balance: {
-        Args: { p_account_id: string; p_delta: number; p_reason: string };
+        Args: {
+          p_account_id: string;
+          p_delta_points: number;
+          p_reason: string;
+        };
         Returns: undefined;
       };
       loyalty_program_stats: {
         Args: { p_organization_id: string };
         Returns: {
           members: number;
-          stamps_issued: number;
+          points_issued: number;
           rewards_redeemed: number;
-          outstanding_stamps: number;
+          outstanding_points: number;
           estimated_liability_cents: number;
         }[];
+      };
+      nearby_vendor_locations: {
+        Args: {
+          p_latitude: number;
+          p_longitude: number;
+          p_radius_miles: number;
+          p_include_live?: boolean;
+          p_include_scheduled?: boolean;
+          p_include_recurring?: boolean;
+          /** Off by default: real vendors outrank empty parking spots. */
+          p_include_hotspots?: boolean;
+        };
+        Returns: NearbyVendorLocation[];
       };
       nearby_live_vendors: {
         Args: {
@@ -612,3 +952,5 @@ export type LoyaltyRedemption =
   Database["public"]["Tables"]["loyalty_redemptions"]["Row"];
 export type LoyaltyProgramPreview =
   Database["public"]["Views"]["loyalty_program_previews"]["Row"];
+export type LoyaltyRewardCatalogItem =
+  Database["public"]["Tables"]["loyalty_reward_catalog_items"]["Row"];

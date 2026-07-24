@@ -26,12 +26,14 @@ export function VendorUnitsSection({
   canManage,
   canManageLocation,
   openLocationSessionsByUnitId,
+  loyalty = null,
 }: {
   units: VendorUnit[];
   organizationSlug: string;
   canManage: boolean;
   canManageLocation: boolean;
   openLocationSessionsByUnitId: Record<string, VendorLocationSession>;
+  loyalty?: { pointsPerDollar: number; rewardCount: number } | null;
 }) {
   if (units.length === 0) {
     return (
@@ -70,6 +72,7 @@ export function VendorUnitsSection({
           canManage={canManage}
           canManageLocation={canManageLocation}
           locationSession={openLocationSessionsByUnitId[unit.id] ?? null}
+          loyalty={loyalty}
         />
       ))}
       {canManage ? (

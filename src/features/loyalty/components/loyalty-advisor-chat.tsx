@@ -92,7 +92,7 @@ export function LoyaltyAdvisorChat() {
           <Textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="e.g. Should I switch from six stamps to five?"
+            placeholder="e.g. Is my first reward too far away?"
             rows={2}
           />
           <Button type="submit" disabled={pending || !question.trim()}>

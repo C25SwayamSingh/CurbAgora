@@ -15,9 +15,9 @@ import { pageTitle } from "@/lib/app-config";
 import { requireCustomer } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
 import {
-  LoyaltyStampCard,
-  type StampCardData,
-} from "@/features/loyalty/components/loyalty-stamp-card";
+  LoyaltyPointsCard,
+  type PointsCardData,
+} from "@/features/loyalty/components/loyalty-points-card";
 
 export const metadata: Metadata = { title: pageTitle("My rewards") };
 
@@ -45,21 +45,21 @@ export default async function RewardsPage() {
     (previews ?? []).map((p) => [p.organization_id, p]),
   );
 
-  const cards: StampCardData[] = (accounts ?? [])
-    .map((account): StampCardData | null => {
+  const cards: PointsCardData[] = (accounts ?? [])
+    .map((account): PointsCardData | null => {
       const preview = previewByOrg.get(account.organization_id);
       if (!preview) return null; // program archived/unpublished — hide the card
       return {
         organizationId: account.organization_id,
         organizationName: preview.organization_name,
-        stampBalance: account.stamp_balance,
-        stampsRequired: preview.stamps_required,
-        rewardName: preview.reward_name,
+        pointBalance: account.point_balance,
+        pointsPerDollar: preview.points_per_dollar,
+        catalog: preview.catalog,
         earningPaused: preview.earning_paused,
         redemptionPaused: preview.redemption_paused,
       };
     })
-    .filter((c): c is StampCardData => c !== null);
+    .filter((c): c is PointsCardData => c !== null);
 
   return (
     <AuthenticatedAppShell>
@@ -67,8 +67,8 @@ export default async function RewardsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">My rewards</h1>
           <p className="text-sm text-muted-foreground">
-            Your stamp cards from neighborhood vendors. Show your code at the
-            counter to earn or redeem.
+            Your points with neighborhood vendors. Show your code at the counter
+            to earn or redeem.
           </p>
         </div>
 
@@ -80,8 +80,8 @@ export default async function RewardsPage() {
                 No cards yet
               </CardTitle>
               <CardDescription>
-                Find a vendor with a loyalty program and tap “Start your stamp
-                card” on their page to get your first stamp.
+                Find a vendor with a rewards program and tap “Start earning
+                points” on their page.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -96,7 +96,7 @@ export default async function RewardsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {cards.map((card) => (
-              <LoyaltyStampCard key={card.organizationId} card={card} />
+              <LoyaltyPointsCard key={card.organizationId} card={card} />
             ))}
           </div>
         )}

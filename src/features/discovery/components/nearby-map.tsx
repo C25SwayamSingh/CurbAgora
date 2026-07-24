@@ -3,19 +3,83 @@
 import * as React from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import type { NearbyLiveVendor } from "@/lib/supabase/database.types";
-import { formatDistance } from "@/features/discovery/components/nearby-vendor-card";
+import type { NearbyVendorLocation } from "@/lib/supabase/database.types";
+import {
+  STATE_STYLES,
+  displayTitle,
+  markerAccessibleName,
+} from "@/features/discovery/location-state";
+import { formatDistance } from "@/features/discovery/components/nearby-location-card";
 
 type LatLng = { lat: number; lng: number };
 
-// CurbAgora brand values for map glyphs. The Maps JavaScript API needs
-// literal color values (CSS variables can't reach the canvas), so these
-// mirror the tokens in globals.css: sunset orange / ink, deep teal / sand.
-const VENDOR_MARKER_FILL = "#F67E04";
-const VENDOR_MARKER_STROKE = "#241505";
-const SELECTED_MARKER_STROKE = "#31737A";
+// The search-center dot. Per-state vendor colours live in STATE_STYLES; the
+// Maps JavaScript API needs literal values (CSS variables can't reach the
+// canvas), so both mirror the tokens in globals.css by hand.
 const CENTER_MARKER_FILL = "#31737A";
 const CENTER_MARKER_STROKE = "#FAF5EC";
+
+// Unit-box outlines, scaled at draw time. Distinct silhouettes matter as much
+// as colour: a customer with a colour-vision difference, or a phone in direct
+// sun, still reads the state from the shape.
+const SQUARE_PATH = "M -1 -1 L 1 -1 L 1 1 L -1 1 Z";
+const DIAMOND_PATH = "M 0 -1.35 L 1.35 0 L 0 1.35 L -1.35 0 Z";
+
+/**
+ * A marker symbol for one result, styled by its state.
+ *
+ * The hotspot's "hollow" shape is a low-opacity fill with a heavy outline — it
+ * reads as *a place*, not *someone is here*, which is the whole point of
+ * keeping it visually apart from the vendor pins.
+ */
+function markerIcon(
+  maps: typeof google.maps,
+  result: NearbyVendorLocation,
+  isSelected: boolean,
+): google.maps.Symbol {
+  const style = STATE_STYLES[result.state];
+  const base = isSelected ? 1.3 : 1;
+
+  if (style.markerShape === "square") {
+    return {
+      path: SQUARE_PATH,
+      scale: 8 * base,
+      fillColor: style.markerFill,
+      fillOpacity: 1,
+      strokeColor: isSelected ? "#31737A" : style.markerStroke,
+      strokeWeight: isSelected ? 3 : 1.5,
+    };
+  }
+  if (style.markerShape === "diamond") {
+    return {
+      path: DIAMOND_PATH,
+      scale: 8 * base,
+      fillColor: style.markerFill,
+      fillOpacity: 1,
+      strokeColor: isSelected ? "#31737A" : style.markerStroke,
+      strokeWeight: isSelected ? 3 : 1.5,
+    };
+  }
+  if (style.markerShape === "hollow") {
+    return {
+      path: maps.SymbolPath.CIRCLE,
+      scale: 9 * base,
+      fillColor: style.markerFill,
+      fillOpacity: 0.25,
+      strokeColor: style.markerFill,
+      strokeWeight: 2.5,
+    };
+  }
+  // circle — LIVE and RECURRING, distinguished by fill.
+  return {
+    path: maps.SymbolPath.CIRCLE,
+    scale: 10 * base,
+    fillColor: style.markerFill,
+    fillOpacity: 1,
+    strokeColor: isSelected ? "#31737A" : style.markerStroke,
+    strokeWeight: isSelected ? 3 : 1.5,
+  };
+}
 
 declare global {
   interface Window {
@@ -57,29 +121,33 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
 }
 
 /** Safe (DOM-built, no innerHTML) info-window content for one vendor. */
-function buildInfoContent(vendor: NearbyLiveVendor): HTMLElement {
+function buildInfoContent(result: NearbyVendorLocation): HTMLElement {
   const root = document.createElement("div");
   root.style.maxWidth = "220px";
   root.style.color = "#1a1a1a";
 
   const name = document.createElement("p");
-  name.textContent = vendor.name;
+  name.textContent = displayTitle(result);
   name.style.fontWeight = "600";
   name.style.margin = "0 0 2px";
   root.appendChild(name);
 
   const label = document.createElement("p");
-  label.textContent = `${vendor.public_label} · ${formatDistance(vendor.distance_miles)}`;
+  label.textContent = `${result.reason_label} · ${formatDistance(result.distance_miles)}`;
   label.style.margin = "0 0 6px";
   label.style.fontSize = "12px";
   root.appendChild(label);
 
-  const link = document.createElement("a");
-  link.href = `/vendors/${vendor.organization_slug}/${vendor.unit_slug}`;
-  link.textContent = "View page";
-  link.style.fontSize = "12px";
-  link.style.fontWeight = "600";
-  root.appendChild(link);
+  // A hotspot has no vendor page to link to — and inventing one would be
+  // exactly the "parking zone that looks like a business" failure.
+  if (result.organization_slug && result.unit_slug) {
+    const link = document.createElement("a");
+    link.href = `/vendors/${result.organization_slug}/${result.unit_slug}`;
+    link.textContent = "View page";
+    link.style.fontSize = "12px";
+    link.style.fontWeight = "600";
+    root.appendChild(link);
+  }
 
   return root;
 }
@@ -95,16 +163,16 @@ export function NearbyMap({
   apiKey,
   center,
   centerLabel,
-  vendors,
+  results,
   selectedId,
   onSelect,
 }: {
   apiKey: string | null;
   center: LatLng;
   centerLabel: string;
-  vendors: NearbyLiveVendor[];
+  results: NearbyVendorLocation[];
   selectedId: string | null;
-  onSelect: (vendorUnitId: string) => void;
+  onSelect: (resultId: string) => void;
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<google.maps.Map | null>(null);
@@ -179,45 +247,42 @@ export function NearbyMap({
 
     const bounds = new maps.LatLngBounds();
     bounds.extend(center);
-    for (const vendor of vendors) {
-      const position = { lat: vendor.latitude, lng: vendor.longitude };
-      const isSelected = vendor.vendor_unit_id === selectedId;
+    for (const result of results) {
+      const position = { lat: result.latitude, lng: result.longitude };
+      // Keyed by result_id, not vendor_unit_id: a hotspot has no unit, and two
+      // states for one vendor never coexist here because the query already
+      // collapsed them to the highest-ranked one.
+      const isSelected = result.result_id === selectedId;
       const marker = new maps.Marker({
         map,
         position,
-        title: `${vendor.name} — ${vendor.public_label}`,
-        icon: {
-          path: maps.SymbolPath.CIRCLE,
-          scale: isSelected ? 13 : 10,
-          fillColor: VENDOR_MARKER_FILL,
-          fillOpacity: 1,
-          strokeColor: isSelected
-            ? SELECTED_MARKER_STROKE
-            : VENDOR_MARKER_STROKE,
-          strokeWeight: isSelected ? 3 : 1.5,
-        },
-        zIndex: isSelected ? 900 : undefined,
+        // The accessible name carries the same sentence the card shows, so a
+        // screen-reader user is never left decoding a colour.
+        title: markerAccessibleName(result),
+        icon: markerIcon(maps, result, isSelected),
+        zIndex: isSelected ? 900 : 500 - result.rank,
       });
-      marker.addListener("click", () => onSelect(vendor.vendor_unit_id));
-      markersRef.current.set(vendor.vendor_unit_id, marker);
+      const id = result.result_id;
+      marker.addListener("click", () => onSelect(id));
+      markersRef.current.set(id, marker);
       bounds.extend(position);
     }
 
     // Re-fit only when the SEARCH changes (center/results) — selecting a
     // marker restyles it but must not yank the viewport around.
-    const boundsKey = `${center.lat},${center.lng}:${vendors
-      .map((v) => v.vendor_unit_id)
+    const boundsKey = `${center.lat},${center.lng}:${results
+      .map((r) => r.result_id)
       .join(",")}`;
     if (boundsKey !== boundsKeyRef.current) {
       boundsKeyRef.current = boundsKey;
-      if (vendors.length > 0) {
+      if (results.length > 0) {
         map.fitBounds(bounds, 56);
       } else {
         map.setCenter(center);
         map.setZoom(13);
       }
     }
-  }, [status, vendors, center, centerLabel, onSelect, selectedId]);
+  }, [status, results, center, centerLabel, onSelect, selectedId]);
 
   // External selection (a click on a list card) focuses the marker.
   React.useEffect(() => {
@@ -225,19 +290,19 @@ export function NearbyMap({
       return;
     }
     const marker = markersRef.current.get(selectedId);
-    const vendor = vendors.find((v) => v.vendor_unit_id === selectedId);
+    const result = results.find((r) => r.result_id === selectedId);
     const map = mapRef.current;
     const info = infoRef.current;
-    if (!marker || !vendor || !map || !info) {
+    if (!marker || !result || !map || !info) {
       return;
     }
     const position = marker.getPosition();
     if (position) {
       map.panTo(position);
     }
-    info.setContent(buildInfoContent(vendor));
+    info.setContent(buildInfoContent(result));
     info.open({ map, anchor: marker });
-  }, [selectedId, status, vendors]);
+  }, [selectedId, status, results]);
 
   if (!apiKey) {
     return (

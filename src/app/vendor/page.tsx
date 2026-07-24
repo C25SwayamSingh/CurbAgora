@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Gift, Shield, ShieldCheck, Users } from "lucide-react";
+import { Gift, QrCode, Shield, ShieldCheck, Users } from "lucide-react";
 
 import { AuthenticatedAppShell } from "@/components/app/authenticated-app-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -16,6 +16,7 @@ import { pageTitle } from "@/lib/app-config";
 import { isMfaMandatoryRole, requireVendorDashboard } from "@/lib/auth/guards";
 import { createServerClient } from "@/lib/supabase/server";
 import { VendorUnitsSection } from "@/features/vendors/components/vendor-units-section";
+import { TeamInvitePanel } from "@/features/organizations/components/team-invite-panel";
 
 export const metadata: Metadata = { title: pageTitle("Vendor dashboard") };
 
@@ -29,6 +30,9 @@ export default async function VendorDashboardPage() {
     { data: members },
     { data: vendorUnits },
     { data: openLocationSessions },
+    { data: loyaltyPreview },
+    { data: profiles },
+    { data: invitations },
   ] = await Promise.all([
     supabase
       .from("organizations")
@@ -50,6 +54,24 @@ export default async function VendorDashboardPage() {
       .select("*")
       .eq("organization_id", ctx.membership.organization_id)
       .is("ended_at", null),
+    // The view already excludes programs that cannot award, so a row here
+    // means rewards are genuinely live.
+    supabase
+      .from("loyalty_program_previews")
+      .select("points_per_dollar, catalog")
+      .eq("organization_id", ctx.membership.organization_id)
+      .maybeSingle(),
+    // Co-members may read each other's display names (profiles_select_shared_org).
+    // Without them the roster reads "Team member / staff" for everyone, which
+    // cannot answer the only question it exists to answer: who is this?
+    supabase.from("profiles").select("id, display_name"),
+    // RLS restricts this to owners/managers; staff get an empty list.
+    supabase
+      .from("organization_invitations")
+      .select("id, email, first_name, role, expires_at")
+      .eq("organization_id", ctx.membership.organization_id)
+      .eq("status", "pending")
+      .order("created_at"),
   ]);
 
   const isLeadership = isMfaMandatoryRole(ctx.membership.role);
@@ -61,6 +83,28 @@ export default async function VendorDashboardPage() {
       session,
     ]),
   );
+  const loyalty = loyaltyPreview
+    ? {
+        pointsPerDollar: loyaltyPreview.points_per_dollar,
+        rewardCount: (loyaltyPreview.catalog ?? []).length,
+      }
+    : null;
+
+  const namesByUserId = new Map(
+    (profiles ?? []).map((p) => [p.id, p.display_name.trim()]),
+  );
+  /** A name someone set, or an honest placeholder — never a fake one. */
+  function nameFor(userId: string): string {
+    return namesByUserId.get(userId) || "Unnamed member";
+  }
+
+  const pendingInvites = (invitations ?? []).map((invite) => ({
+    id: invite.id,
+    email: invite.email,
+    firstName: invite.first_name,
+    role: invite.role,
+    expiresAt: invite.expires_at,
+  }));
 
   return (
     <AuthenticatedAppShell>
@@ -164,7 +208,12 @@ export default async function VendorDashboardPage() {
                       className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
                     >
                       <span className="font-medium">
-                        {member.user_id === ctx.user.id ? "You" : "Team member"}
+                        {nameFor(member.user_id)}
+                        {member.user_id === ctx.user.id ? (
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                            (you)
+                          </span>
+                        ) : null}
                       </span>
                       <span className="capitalize text-muted-foreground">
                         {member.role}
@@ -177,10 +226,13 @@ export default async function VendorDashboardPage() {
                   No team members to show.
                 </p>
               )}
-              {isLeadership ? (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Team invitations are coming in a later release.
-                </p>
+              {canManageUnit ? (
+                <div className="mt-4 border-t border-border pt-4">
+                  <TeamInvitePanel
+                    canInviteOwner={ctx.membership.role === "owner"}
+                    pending={pendingInvites}
+                  />
+                </div>
               ) : null}
             </CardContent>
           </Card>
@@ -193,6 +245,7 @@ export default async function VendorDashboardPage() {
             canManage={canManageUnit}
             canManageLocation
             openLocationSessionsByUnitId={openLocationSessionsByUnitId}
+            loyalty={loyalty}
           />
         ) : null}
 
@@ -203,16 +256,22 @@ export default async function VendorDashboardPage() {
               Loyalty &amp; rewards
             </CardTitle>
             <CardDescription>
-              Build a neighborhood stamp card with the Loyalty Advisor — it
-              models the economics so the rewards stay sustainable for your
-              margins.
+              Customers earn points on what they spend and trade them for
+              rewards you choose. CurbAgora prices each reward and shows what it
+              costs you before anything goes live.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link href="/vendor/checkout">
+                <QrCode aria-hidden="true" />
+                Open checkout
+              </Link>
+            </Button>
             <Button asChild variant="outline">
               <Link href="/vendor/loyalty">
                 <Gift aria-hidden="true" />
-                Open the Loyalty Advisor
+                Rewards &amp; program
               </Link>
             </Button>
           </CardContent>

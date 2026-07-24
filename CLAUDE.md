@@ -26,6 +26,18 @@ Implemented: Next.js scaffold, Tailwind/shadcn, Supabase placeholders, feature f
 
 **Not implemented:** Auth, payments, SMS, maps, loyalty transactions, database schema.
 
+## Loyalty Rules (details in docs/decisions/loyalty-system.md)
+
+- Spend-based points only. Integer cents and integer points; the server is the
+  sole authority. Never reintroduce stamps, visits, or punch cards.
+- Points come from a **staff-entered** eligible subtotal. A customer never
+  types a purchase amount, and no QR scan alone can award anything.
+- Two different QRs: the **permanent** vendor QR encodes a public URL and only
+  routes; the **dynamic** customer QR is a one-time, 5-minute opaque token
+  paired with a 4-digit spoken fallback. Only the token's digest is stored.
+- Camera access is requested on explicit tap only; frames never leave the
+  device; every exit path stops all MediaStream tracks.
+
 ## Coding Standards
 
 - TypeScript strict mode

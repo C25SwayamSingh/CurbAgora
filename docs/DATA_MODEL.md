@@ -100,8 +100,33 @@ auth.users 0──1 platform_admins
 - RLS enabled on **every** table; no policy ⇒ no access (default deny)
 - Enum types for all constrained values
 
+## Loyalty (Implemented)
+
+Spend-based points. Full rationale in `docs/decisions/loyalty-system.md`.
+
+| Table                          | Role                                             |
+| ------------------------------ | ------------------------------------------------ |
+| `loyalty_programs`             | One per organization; pause switches             |
+| `loyalty_program_versions`     | Immutable rule snapshots; `points_per_dollar`    |
+| `loyalty_reward_catalog_items` | Point-priced rewards per version                 |
+| `loyalty_accounts`             | Customer×org balance projection                  |
+| `loyalty_ledger_entries`       | Append-only truth; every balance derives from it |
+| `loyalty_claim_codes`          | **Checkout sessions** (see below)                |
+| `loyalty_redemptions`          | Reward reservations, own 6-character code        |
+| `loyalty_checkout_lookups`     | Identification-attempt audit log                 |
+
+`loyalty_claim_codes` keeps its stamp-era name because
+`loyalty_ledger_entries.claim_code_id` references it and that audit trail must
+survive. It now models a **checkout session**: `token_digest` (SHA-256 of the
+opaque QR token — the raw token is never stored), `numeric_code` (4 digits,
+unique among active sessions per org), `vendor_unit_id` (audit context only;
+programs are per-organization), `failed_attempts`, and `invalidated_reason`.
+
+Status values stay lowercase so historical rows remain valid:
+`pending` = ACTIVE, `confirmed` = CONSUMED, plus `expired`, `cancelled`, and
+`locked`. Legacy 6-character `code` values are preserved and no longer issued.
+
 ## Planned (Later Phases)
 
-Vendors/brand units, menus, live locations, discovery, reviews, loyalty,
-QR codes, ambassadors, billing, moderation records — to be specified
-alongside `docs/PRODUCT_SPEC.md`.
+Menus, reviews, ambassadors, billing, moderation records, POS integration —
+to be specified alongside `docs/PRODUCT_SPEC.md`.
